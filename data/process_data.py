@@ -22,7 +22,7 @@ def load_data_deepmoji(path):
 def load_dictionary(path):
     with open(path, "r", encoding = "utf-8") as f:
         lines = f.readlines()
-    text2index = {}, {}
+    text2index = {}
     for line in lines:
         k,v = line.strip().split("\t")
         v = int(v)
