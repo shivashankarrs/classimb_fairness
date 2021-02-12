@@ -2,6 +2,8 @@ import pickle
 import numpy as np
 from sklearn.utils import shuffle
 
+DATA_PATH = "/Users/sssub/Documents/GitHub/classimb_fairness/class_imbalance/datasets/"
+
 def load_data_deepmoji(path):
     fnames = ["neg_neg.npy", "neg_pos.npy", "pos_neg.npy", "pos_pos.npy"]
     protected_labels = [0, 1, 0, 1]
@@ -16,6 +18,7 @@ def load_data_deepmoji(path):
             _data['protected_feature'] = p_label
             _data['label'] = m_label
             dataset.append(_data)
+        print(fname, len(dataset))
     dataset = shuffle(dataset, random_state=0)
     return dataset
 
@@ -52,3 +55,6 @@ def dump_dataset(path, data):
         data = pickle.dump(data, f)
     return 
 
+if __name__ == "__main__":
+    train_biasbios = load_data_biasbios(DATA_PATH+"biography/train.pickle", "../resources/professions.txt")
+    print (len(train_biasbios), train_biasbios[0])
