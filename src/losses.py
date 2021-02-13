@@ -22,7 +22,6 @@ class FocalLoss(nn.Module):
         assert gamma >= 0
         self.gamma = gamma
         self.weight = weight
-
     def forward(self, input, target):
         return focal_loss(F.cross_entropy(input, target, reduction='none', weight=self.weight), self.gamma)
 
