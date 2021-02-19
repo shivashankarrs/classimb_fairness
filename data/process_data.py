@@ -19,7 +19,7 @@ def load_data_deepmoji(path):
             _data['label'] = m_label
             dataset.append(_data)
         print(fname, len(dataset))
-    dataset = shuffle(dataset, random_state=0)
+    #dataset = shuffle(dataset, random_state=0)
     return dataset
 
 def load_dictionary(path):
@@ -42,7 +42,7 @@ def load_data_biasbios(path, rpath):
         _data['protected_feature'] = 1 if data['g'] == 'f' else 0
         _data['label'] = prof2index[data['p']]
         trimdataset.append(_data)
-    trimdataset = shuffle(trimdataset, random_state=0)
+    #trimdataset = shuffle(trimdataset, random_state=0)
     return trimdataset
 
 def load_dataset(path):
