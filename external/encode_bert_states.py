@@ -1,20 +1,7 @@
-"""
-Usage:
-  encode_bert_states.py [--input_file=INPUT_FILE] [--output_dir=OUTPUT_DIR] [--split=SPLIT]
-Options:
-  -h --help                     show this help message and exit
-  --input_file=INPUT_FILE       input dir file
-  --output_dir=OUTPUT_DIR       write down output file
-  --split=SPLIT                 split name
-Encoding text with Bert with two methods: average of all words,
- and the cls token as sentence representation.
-"""
-
 import numpy as np
-from docopt import docopt
 import torch
 from transformers import *
-import pickle
+import pickle, sys
 from tqdm import tqdm
 
 
@@ -79,13 +66,11 @@ def encode_text(model, data):
 
 
 if __name__ == '__main__':
-    arguments = docopt(__doc__)
+    in_file = sys.argv[1]
+    out_dir = sys.argv[2]
+    split = sys.argv[3]
 
-    in_file = arguments['--input_file']
-
-    out_dir = arguments['--output_dir']
-    split = arguments['--split']
-
+    print(in_file, out_dir, split)
     model, tokenizer = load_lm()
 
     data = read_data_file(in_file)
