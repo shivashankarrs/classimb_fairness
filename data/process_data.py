@@ -104,7 +104,7 @@ def dump_dataset(path, data):
     return 
 
 if __name__ == "__main__":
-    train_biasbios = load_data_biasbios(DATA_PATH+"biography/train.pickle", "../resources/professions.txt", DATA_PATH+"biography/features/train_cls.npy")
+    train_biasbios = load_data_biasbios(DATA_PATH+"biography/test.pickle", "../resources/professions.txt", DATA_PATH+"biography/features/bert_encode_biasbios/test_cls.npy")
     print (len(train_biasbios), train_biasbios['feature'].shape, train_biasbios['feature'][0].shape)
 
     #train_biasbios = load_data_deepmoji(DATA_PATH+"deepmoji/test/", option='inlp0.8')
