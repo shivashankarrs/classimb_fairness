@@ -3,9 +3,7 @@ from sklearn.svm import LinearSVC
 from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.utils import shuffle
-
 from collections import Counter, defaultdict
-
 import json
 from collections import defaultdict
 import sys
@@ -22,11 +20,7 @@ def load_data(path, size, ratio=0.5):
     X, Y_p, Y_m = [], [], []
     n1 = int(size * ratio / 2)
     n2 = int(size * (1 - ratio) / 2)
-#     print(n1, n2)
-
     for fname, p_label, m_label, n in zip(fnames, protected_labels, main_labels, [n1, n2, n2, n1]):
-#         print(path + '/' + fname)
-#         print(np.load(path + '/' + fname).shape)
         data = np.load(path + '/' + fname)[:n]
         for x in data:
             X.append(x)
@@ -43,9 +37,7 @@ def load_data(path, size, ratio=0.5):
 
 
 def get_TPR(y_main, y_hat_main, y_protected):
-    
     all_y = list(Counter(y_main).keys())
-    
     protected_vals = defaultdict(dict)
     for label in all_y:
         for i in range(2):
@@ -53,20 +45,14 @@ def get_TPR(y_main, y_hat_main, y_protected):
             y_label = y_main[used_vals]
             y_hat_label = y_hat_main[used_vals]
             protected_vals['y:{}'.format(label)]['p:{}'.format(i)] = (y_label == y_hat_label).mean()
-            
     diffs = {}
     for k, v in protected_vals.items():
         vals = list(v.values())
         diffs[k] = vals[0] - vals[1]
     return protected_vals, diffs
 
-
-
-
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr)))
-
-
 
 def run_all_losses(ratio=0.5):
     results = defaultdict(dict)
@@ -84,48 +70,10 @@ def run_all_losses(ratio=0.5):
 
     biased_classifier.fit(x_train, y_m_train)
     biased_score = biased_classifier.score(x_dev, y_m_dev)
-    
-    '''
-    P = np.load('../data/emoji_sent_race_{}/P_svm.num-clfs=300.npy'.format(ratio), allow_pickle=True)
-    P = P[1]
-    n_dims = 120
-#     n_dims = 70
-    if ratio == 0.5:
-        n_dims = 200
-    elif ratio == 0.6:
-        n_dims = 100
-    elif ratio == 0.7:
-        n_dims = 115
-    elif ratio == 0.8:
-        n_dims = 200
-    P = debias.get_projection_to_intersection_of_nullspaces(P[:n_dims], input_dim=300)
-    
-    debiased_x_train = P.dot(x_train.T).T
-    debiased_x_dev = P.dot(x_dev.T).T
-
-    classifier = LinearSVC(fit_intercept=True, class_weight='balanced', dual=False, C=0.1, max_iter=10000)
-
-    classifier.fit(debiased_x_train, y_m_train)
-    debiased_score = classifier.score(debiased_x_dev, y_m_dev)
-    '''
-    #we are not predicting protected attributes from the debiased representations, we are predicting from the original attributes, so the results are not important
-    p_classifier = SGDClassifier(warm_start=True, loss='log', n_jobs=64, max_iter=10000, random_state=0, tol=1e-3)
-    p_classifier.fit(x_train, y_p_train)
-    p_score = p_classifier.score(x_dev, y_p_dev)
-    #results[ratio]['p_acc'] = p_score
     _, biased_diffs = get_TPR(y_m_dev, biased_classifier.predict(x_dev), y_p_dev)
-    
-   # _, debiased_diffs = get_TPR(y_m_dev, classifier.predict(debiased_x_dev), y_p_dev)
-    
-#     results[ratio]['biased_diff_tpr'] = biased_diffs['y:0']
-    results[ratio]['sgd_tpr'] = rms(list(biased_diffs.values()))
-#     results[ratio]['debiased_diff_tpr'] = debiased_diffs['y:0']
-    #results[ratio]['debiased_diff_tpr'] = rms(list(debiased_diffs.values()))
-    
-    results[ratio]['sgd_acc'] = biased_score
-    #results[ratio]['debiased_acc'] = debiased_score
-    
-    #added by afshin
+    results[ratio]['svc_tpr'] = rms(list(biased_diffs.values()))
+    results[ratio]['svc_acc'] = biased_score
+
     unique, counts = np.unique(y_m_train, return_counts=True)
     cls_num_list = counts.tolist()
     beta = 0.9999
@@ -139,6 +87,7 @@ def run_all_losses(ratio=0.5):
     criterion3 = SelfAdjDiceLoss()
     criterion4 = F.cross_entropy
     criterions = {'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4}
+
     for c_name, criterion in criterions.items():
         debiased_model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=True, criterion=criterion2)
         #debiased_model = LogReg(input_size=x_train.shape[1], output_size=np.max(y_m_train) + 1, 
