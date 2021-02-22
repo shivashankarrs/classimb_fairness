@@ -7,7 +7,9 @@ from sklearn.metrics import accuracy_score
 from losses import NormedLinear
 from torch.utils.data import Dataset, DataLoader
 from torch.autograd import Variable
+import logging
 
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
 class MLP(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, normed_linear=False, criterion=F.cross_entropy):
@@ -46,8 +48,9 @@ class MLP(nn.Module):
         patience = 0
         for i in range(n_iter):
             self.train()
-            train_epoch(self, optimizer, train_data_loader, self.criterion)            
+            train_loss = train_epoch(self, optimizer, train_data_loader, self.criterion)            
             val_score = self.score(X_val_tensor, y_val_tensor)
+            logging.info(f"iter {i} train loss {train_loss:.2f} val acc:{val_score:.2f}")
             if val_score > best_score:
                 best_state_dict = self.state_dict()
                 best_score = val_score
@@ -88,8 +91,9 @@ class LogReg(nn.Module):
         patience = 0
         for i in range(n_iter):
             self.train()
-            train_epoch(self, optimizer, train_data_loader, self.criterion)            
+            train_loss = train_epoch(self, optimizer, train_data_loader, self.criterion)            
             val_score = self.score(X_val_tensor, y_val_tensor)
+            logging.info(f"train loss {train_loss:.2f} val acc:{val_score:.2f}")
             if val_score > best_score:
                 best_state_dict = self.state_dict()
                 best_score = val_score
@@ -114,7 +118,6 @@ class DeepMojiModel(Model):
     hidden_size: ``int``, required
         the size of the hidden layer
     """
-
     def __init__(self,
                  vocab: Vocabulary,
                  emb_size: int,
@@ -122,18 +125,15 @@ class DeepMojiModel(Model):
                  ) -> None:
         super().__init__(vocab)
         self.emb_size = emb_size
-
         # an mlp with one hidden layer
         layers = []
         layers.append(nn.Linear(self.emb_size, hidden_size))
         layers.append(nn.Tanh())
         layers.append(nn.Linear(hidden_size, 2))
         self.scorer = nn.Sequential(*layers)
-
         self.loss = torch.nn.CrossEntropyLoss()
         self.metrics = {'accuracy': BooleanAccuracy(),
                         'f1': F1Measure(positive_label=1)}
-
     
     def forward(self,
                 vec: torch.Tensor,
@@ -155,15 +155,12 @@ class DeepMojiModel(Model):
         """
         scores = self.scorer(vec)
         y_hat = torch.argmax(scores, dim=1)
-
         output = {"y_hat": y_hat}
         if label is not None:
             self.metrics['accuracy'](y_hat, label)
             self.metrics['f1'](torch.nn.functional.softmax(scores, dim=1), label)
             output["loss"] = self.loss(scores, label)
-
         return output
-
     
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         p, r, f1 = self.metrics['f1'].get_metric(reset=reset)
