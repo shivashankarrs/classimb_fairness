@@ -14,20 +14,26 @@ import torch
 from losses import *
 from models import MLP, LogReg, variable
 import pickle
+import logging
+import sys
+sys.path.append('../')
 
-def load_data(path, size, ratio=0.5):
+from data.process_data import load_data_deepmoji
+
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
+
+def load_data(path):
     fnames = ["neg_neg.npy", "neg_pos.npy", "pos_neg.npy", "pos_pos.npy"]
     protected_labels = [0, 1, 0, 1]
     main_labels = [0, 0, 1, 1]
     X, Y_p, Y_m = [], [], []
-    n1 = int(size * ratio / 2)
-    n2 = int(size * (1 - ratio) / 2)
+
 #     print(n1, n2)
 
-    for fname, p_label, m_label, n in zip(fnames, protected_labels, main_labels, [n1, n2, n2, n1]):
+    for fname, p_label, m_label in zip(fnames, protected_labels, main_labels):
 #         print(path + '/' + fname)
 #         print(np.load(path + '/' + fname).shape)
-        data = np.load(path + '/' + fname)[:n]
+        data = np.load(path + '/' + fname)
         for x in data:
             X.append(x)
         for _ in data:
@@ -68,62 +74,32 @@ def rms(arr):
 
 
 
-def run_all_losses(ratio=0.5):
+def run_all_losses(option='original'):
+    ratio = option
+
     results = defaultdict(dict)
-    x_train, y_p_train, y_m_train = load_data(
-        '../datasets/emoji_sent_race_{}/train/'.format(ratio),
-        size=100000, ratio=ratio)
-    x_dev, y_p_dev, y_m_dev = load_data(
-        '../datasets/emoji_sent_race_{}/test/'.format(ratio),
-        size=100000, ratio=0.5)
-    x_dev_realdev, y_p_dev_realdev, y_m_dev_realdev = load_data(
-        '../datasets/emoji_sent_race_{}/dev/'.format(ratio),
-        size=100000, ratio=0.5)
-    
+    logging.info('loading train dev test sets...')
+    train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option)
+    dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option)
+    test_data = load_data_deepmoji('../datasets/deepmoji/test', option=option)
+    x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
+    x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
+    x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
+
+    logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
     biased_classifier = LinearSVC(fit_intercept=True, class_weight='balanced', dual=False, C=0.1, max_iter=10000)
 
     biased_classifier.fit(x_train, y_m_train)
-    biased_score = biased_classifier.score(x_dev, y_m_dev)
+    biased_score = biased_classifier.score(x_test, y_m_test)
     
-    '''
-    P = np.load('../data/emoji_sent_race_{}/P_svm.num-clfs=300.npy'.format(ratio), allow_pickle=True)
-    P = P[1]
-    n_dims = 120
-#     n_dims = 70
-    if ratio == 0.5:
-        n_dims = 200
-    elif ratio == 0.6:
-        n_dims = 100
-    elif ratio == 0.7:
-        n_dims = 115
-    elif ratio == 0.8:
-        n_dims = 200
-    P = debias.get_projection_to_intersection_of_nullspaces(P[:n_dims], input_dim=300)
-    
-    debiased_x_train = P.dot(x_train.T).T
-    debiased_x_dev = P.dot(x_dev.T).T
-
-    classifier = LinearSVC(fit_intercept=True, class_weight='balanced', dual=False, C=0.1, max_iter=10000)
-
-    classifier.fit(debiased_x_train, y_m_train)
-    debiased_score = classifier.score(debiased_x_dev, y_m_dev)
-    '''
     #we are not predicting protected attributes from the debiased representations, we are predicting from the original attributes, so the results are not important
     p_classifier = SGDClassifier(warm_start=True, loss='log', n_jobs=64, max_iter=10000, random_state=0, tol=1e-3)
     p_classifier.fit(x_train, y_p_train)
-    p_score = p_classifier.score(x_dev, y_p_dev)
-    #results[ratio]['p_acc'] = p_score
-    _, biased_diffs = get_TPR(y_m_dev, biased_classifier.predict(x_dev), y_p_dev)
-    
-   # _, debiased_diffs = get_TPR(y_m_dev, classifier.predict(debiased_x_dev), y_p_dev)
-    
-#     results[ratio]['biased_diff_tpr'] = biased_diffs['y:0']
-    results[ratio]['sgd_tpr'] = rms(list(biased_diffs.values()))
-#     results[ratio]['debiased_diff_tpr'] = debiased_diffs['y:0']
-    #results[ratio]['debiased_diff_tpr'] = rms(list(debiased_diffs.values()))
-    
-    results[ratio]['sgd_acc'] = biased_score
-    #results[ratio]['debiased_acc'] = debiased_score
+    p_score = p_classifier.score(x_test, y_p_test)
+    _, biased_diffs = get_TPR(y_m_test, biased_classifier.predict(x_test), y_p_test)
+    results[option]['sgd_tpr'] = rms(list(biased_diffs.values()))
+    results[option]['sgd_acc'] = biased_score
+
     
     #added by afshin
     unique, counts = np.unique(y_m_train, return_counts=True)
@@ -140,31 +116,34 @@ def run_all_losses(ratio=0.5):
     criterion4 = F.cross_entropy
     criterions = {'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4}
     for c_name, criterion in criterions.items():
-        debiased_model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=True, criterion=criterion2)
+        logging.info(f"loss: {c_name}")
+        #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
+        normed_linear = True if c_name == 'ldam' else False
+        debiased_model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
         #debiased_model = LogReg(input_size=x_train.shape[1], output_size=np.max(y_m_train) + 1, 
         #                        normed_linear=True if c_name=='ldam' else False, criterion=criterion)
         debiased_model.to(device)
-        optimizer = torch.optim.Adam(params=debiased_model.parameters(), lr=0.001)
-        debiased_model.fit(x_train, y_m_train, x_dev_realdev, y_m_dev_realdev, optimizer, n_iter=200, batch_size=1000, max_patience=10)
+        optimizer = torch.optim.Adam(params=debiased_model.parameters(), lr=1e-3)
+        debiased_model.fit(x_train, y_m_train, x_dev, y_m_dev, optimizer, n_iter=1000, batch_size=1000, max_patience=20)
         #get the representation from the trained MLP
-        if isinstance(debiased_model, MLP):
-            x_train_repr, x_dev_realdev_repr, x_dev_repr = debiased_model.get_hidden(x_train), debiased_model.get_hidden(x_dev_realdev), debiased_model.get_hidden(x_dev)
-            out_filename = '../datasets/emoji_sent_race_{}/x_{}_reps.pkl'.format(ratio, c_name)
-            with open(out_filename, 'wb') as fout:
-                print('dumping repr in ' + out_filename)
-                pickle.dump((x_train_repr, x_dev_realdev_repr, x_dev_repr), fout)
-        debiased_score = debiased_model.score(x_dev, y_m_dev)
-        _, debiased_diffs = get_TPR(y_m_dev, debiased_model.predict(x_dev), y_p_dev)
-        results[ratio][f"{c_name}_acc"] = debiased_score
-        results[ratio][f"{c_name}_tpr"] = rms(list(debiased_diffs.values()))
-    pretty_print(results, ratio)
+        if isinstance(debiased_model, MLP) and criterion == criterion4:
+            x_train_repr, x_dev_repr, x_test_repr = debiased_model.get_hidden(x_train), debiased_model.get_hidden(x_dev), debiased_model.get_hidden(x_test)
+            np.save('../datasets/deepmoji/x_{}_300d.npy'.format('train'), x_train_repr)
+            np.save('../datasets/deepmoji/x_{}_300d.npy'.format('dev'), x_dev_repr)
+            np.save('../datasets/deepmoji/x_{}_300d.npy'.format('test'), x_test_repr)
+
+        debiased_score = debiased_model.score(x_test, y_m_test)
+        _, debiased_diffs = get_TPR(y_m_test, debiased_model.predict(x_test), y_p_test)
+        results[option][f"{c_name}_acc"] = debiased_score
+        results[option][f"{c_name}_tpr"] = rms(list(debiased_diffs.values()))
+    pretty_print(results, option)
     return results    
 
 
-def pretty_print(results, ratio=0.5):
-    accs = [h for h in sorted(results[ratio]) if 'acc' in h]
-    tprs = [h for h in sorted(results[ratio]) if 'tpr' in h]
-    header = "ratio" + " " + " ".join(accs) + " " +  " ".join(tprs)
+def pretty_print(results, option='original'):
+    accs = [h for h in sorted(results[option]) if 'acc' in h]
+    tprs = [h for h in sorted(results[option]) if 'tpr' in h]
+    header = "option" + " " + " ".join(accs) + " " +  " ".join(tprs)
     print(header)
 
     for r, v in results.items():
@@ -174,9 +153,9 @@ def pretty_print(results, ratio=0.5):
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     all_results = defaultdict(dict)
-    for ratio in [0.5, 0.6, 0.7, 0.8]:
-        ratio_results = run_all_losses(ratio)
-        all_results[ratio] = ratio_results[ratio]
+    for option in ['original']:
+        option_results = run_all_losses(option=option)
+        all_results[option] = option_results[option]
     pretty_print(all_results)
 
 
