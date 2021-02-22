@@ -10,6 +10,8 @@ focal loss and ldam loss taken from https://github.com/kaidic/LDAM-DRW
 self adjusted dice loss taken from https://github.com/fursovia/self-adj-dice/ based on Dice Loss for Data-imbalanced NLP Tasks
 '''
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 def focal_loss(input_values, gamma):
     """Computes the focal loss"""
     p = torch.exp(-input_values)
@@ -57,17 +59,17 @@ class LDAMLoss(nn.Module):
         super(LDAMLoss, self).__init__()
         m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
         m_list = m_list * (max_m / np.max(m_list))
-        m_list = torch.FloatTensor(m_list)
+        m_list = torch.FloatTensor(m_list).to(device)
         self.m_list = m_list
         assert s > 0
         self.s = s
         self.weight = weight
 
     def forward(self, x, target):
-        index = torch.zeros_like(x, dtype=torch.uint8)
+        index = torch.zeros_like(x, dtype=torch.uint8).to(device)
         index.scatter_(1, target.data.view(-1, 1), 1)
         
-        index_float = index.type(torch.FloatTensor)
+        index_float = index.type(torch.FloatTensor).to(device)
         batch_m = torch.matmul(self.m_list[None, :], index_float.transpose(0,1))
         batch_m = batch_m.view((-1, 1))
         x_m = x - batch_m
