@@ -22,6 +22,62 @@ from data.process_data import load_data_deepmoji
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import confusion_matrix
+
+def group_evaluation(preds, labels, p_labels, silence=True):
+
+    preds = np.array(preds)
+    labels = np.array(labels)
+    p_labels = np.array(p_labels)
+
+    p_set = set(p_labels)
+    if len(p_set)!=2:
+        print("Assuming binary private labels")
+
+    g1_preds = preds[np.array(p_labels) == 1]
+    g1_labels = labels[np.array(p_labels) == 1]
+
+    g0_preds = preds[np.array(p_labels) == 0]
+    g0_labels = labels[np.array(p_labels) == 0]
+
+    tn0, fp0, fn0, tp0 = confusion_matrix(g0_labels, g0_preds).ravel()
+    TPR0 = tp0/(fn0+tp0)
+    TNR0 = tn0/(fp0+tn0)
+
+    tn1, fp1, fn1, tp1 = confusion_matrix(g1_labels, g1_preds).ravel()
+    TPR1 = tp1/(fn1+tp1)
+    TNR1 = tn1/(tn1+fp1)
+    
+    acc_0 = f1_score(g0_labels, g0_preds)
+    acc_1 = f1_score(g1_labels, g1_preds)
+
+    if not silence:
+        print("Accuracy 0: {}".format(acc_0))
+        print("Accuracy 1: {}".format(acc_1))
+
+        print("TPR 0: {}".format(TPR0))
+        print("TPR 1: {}".format(TPR1))
+
+        print("TNR 0: {}".format(TNR0))
+        print("TNR 1: {}".format(TNR1))
+
+        print("TPR gap: {}".format(TPR0-TPR1))
+        print("TNR gap: {}".format(TNR0-TNR1))
+
+    return {"Accuracy_0": acc_0,
+            "Accuracy_1":acc_1,
+            "TPR_0":TPR0,
+            "TPR_1":TPR1,
+            "TNR_0":TNR0,
+            "TNR_1":TNR1,
+            "TPR_gap":(TPR0-TPR1),
+            "TNR_gap":(TNR0-TNR1),
+            "F1 GAP": (acc_0-acc_1)}
+
 def get_TPR(y_main, y_hat_main, y_protected):
     
     all_y = list(Counter(y_main).keys())
