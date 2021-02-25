@@ -115,6 +115,28 @@ class SelfAdjDiceLoss(torch.nn.Module):
         else:
             raise NotImplementedError(f"Reduction `{self.reduction}` is not supported.")
 
+class CrossEntropyWithInstanceWeights(nn.Module):
+    #supports both class weight and instance weight
+    def __init__(self, class_weights=None, reduction='mean'):
+        #don't reduce
+        super(CrossEntropyWithInstanceWeights, self).__init__()
+        self.celoss = nn.CrossEntropyLoss(weight=class_weights, reduce=False, reduction='none')
+        self.reduction = reduction
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, instance_weights: torch.Tensor) -> torch.Tensor:
+        corss_ent_loss = self.celoss(logits, targets)
+        if instance_weights is not None:
+            assert corss_ent_loss.shape == instance_weights.shape, f"{corss_ent_loss.shape} != {instance_weights.shape}"
+            corss_ent_loss = corss_ent_loss * instance_weights
+        #reduce here
+        if self.reduction == "mean":
+            return corss_ent_loss.mean()
+        elif self.reduction == "sum":
+            return corss_ent_loss.sum()
+        elif self.reduction == "none" or self.reduction is None:
+            return corss_ent_loss
+        else:
+            raise NotImplementedError(f"Reduction `{self.reduction}` is not supported.")
+
 
 if __name__ == '__main__':
     from imblearn.datasets import fetch_datasets
@@ -131,8 +153,8 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y,random_state=0)
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, stratify=y_train, random_state=0)
     
-    X_train_tensor, X_val_tensor, X_test_tensor = torch.FloatTensor(X_train), torch.FloatTensor(X_val), torch.FloatTensor(X_test)
-    y_train_tensor, y_val_tensor, y_test_tensor = torch.LongTensor(y_train), torch.LongTensor(y_val), torch.LongTensor(y_test)
+    X_train_tensor, X_val_tensor, X_test_tensor = torch.FloatTensor(X_train).to(device), torch.FloatTensor(X_val).to(device), torch.FloatTensor(X_test).to(device)
+    y_train_tensor, y_val_tensor, y_test_tensor = torch.LongTensor(y_train).to(device), torch.LongTensor(y_val).to(device), torch.LongTensor(y_test).to(device)
 
 
     class MLP(nn.Module):
@@ -152,31 +174,37 @@ if __name__ == '__main__':
     effective_num = 1.0 - np.power(beta, cls_num_list)
     per_cls_weights = (1.0 - beta) / np.array(effective_num)
     per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
-    per_cls_weights = torch.FloatTensor(per_cls_weights)
+    per_cls_weights = torch.FloatTensor(per_cls_weights).to(device)
     
-    criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
-    criterion2 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=30)
-    criterion3 = SelfAdjDiceLoss()
+    criterion1 = FocalLoss(weight=per_cls_weights, gamma=1).to(device)
+    criterion2 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=30).to(device)
+    criterion3 = SelfAdjDiceLoss().to(device)
     criterion4 = F.cross_entropy
+    criterion5 = CrossEntropyWithInstanceWeights().to(device)
     
-    criterions = {'ldam':criterion2, 'focal':criterion1, 'adjusteddice':criterion3, 'crossentropy':criterion4}
+    criterions = {'ldam':criterion2, 'focal':criterion1, 'adjusteddice':criterion3, 'crossentropy':criterion4, 'cewithinstanceweights':criterion5}
 
     def f1_eval(model, x_tensor, y_true):
         model.eval()
         output = model(x_tensor)
-        y_pred = F.softmax(output, dim=1).max(dim=1)[1]
+        y_pred = F.softmax(output, dim=1).max(dim=1)[1].detach().cpu().numpy()
         return f1_score(y_true, y_pred, average='macro')
     
     for c_name, criterion in criterions.items():
-        model = MLP(input_size=X.shape[1], output_size=np.max(y) + 1, normed_linear=True if c_name == 'ldam' else False)
+        model = MLP(input_size=X.shape[1], output_size=np.max(y) + 1, normed_linear=True if c_name == 'ldam' else False).to(device)
         optimizer = torch.optim.Adam(params=model.parameters(), lr=0.001)
         best_f1 = -1
         best_state_dict = model.state_dict()
+        instance_weights = torch.ones(y_train_tensor.shape[0]).to(device)
         for i in range(1000):
             model.train()
             optimizer.zero_grad()
             output = model(X_train_tensor)
-            loss = criterion(output, y_train_tensor)
+            if c_name == 'cewithinstanceweights':
+                #equal weight for all instances
+                loss = criterion(output, y_train_tensor, instance_weights=instance_weights)        
+            else:
+                loss = criterion(output, y_train_tensor)
             loss.backward()
             optimizer.step()
             val_f1 = f1_eval(model, X_val_tensor, y_val)
