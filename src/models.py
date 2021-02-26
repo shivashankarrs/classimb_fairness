@@ -56,7 +56,7 @@ class MLP(nn.Module):
             self.train()
             train_loss = train_epoch(self, optimizer, train_data_loader, self.criterion)            
             val_score = self.score(X_val_tensor, y_val_tensor)
-            logging.info(f"iter {i} train loss {train_loss:.2f} val f1:{val_score:.2f}")
+            logging.debug(f"iter {i} train loss {train_loss:.2f} val f1:{val_score:.2f}")
             if val_score > best_score:
                 best_state_dict = self.state_dict()
                 best_score = val_score
@@ -95,7 +95,7 @@ def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.uti
         input, target = variable(input), variable(target)
         optimizer.zero_grad()
         output = model(input)
-        if isinstance(criterion, losses.CrossEntropyWithInstanceWeights):
+        if isinstance(criterion, losses.CrossEntropyWithInstanceWeights) or isinstance(criterion, losses.LDAMLossInstanceWeight):
             loss = criterion(output, target, instance_weights)
         else:
             loss = criterion(output, target)

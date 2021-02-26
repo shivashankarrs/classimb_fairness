@@ -77,6 +77,44 @@ class LDAMLoss(nn.Module):
         output = torch.where(index, x_m, x)
         return F.cross_entropy(self.s*output, target, weight=self.weight)
 
+class LDAMLossInstanceWeight(nn.Module):
+    
+    def __init__(self, cls_num_list, max_m=0.5, weight=None, s=30):
+        '''
+        cls_num_list: the number of instances in each class, a list of numbers where cls_num_list[0] is the number of instances in class 0
+        weight: a vector weight of each class (can be different from |C_i| / sum(|C_j|)) as in  Class-balanced loss based on effective
+        number of samples implemented in RW in LDAM-DRW where weights are:
+            beta = 0.9999
+            effective_num = 1.0 - np.power(beta, cls_num_list)
+            per_cls_weights = (1.0 - beta) / np.array(effective_num)
+            per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
+            per_cls_weights = torch.FloatTensor(per_cls_weights).cuda(args.gpu)
+
+            note: for ldam loss the last layer of the model should NOT be nn.Linear, it should be nn.NormedLinear
+        '''
+        super(LDAMLossInstanceWeight, self).__init__()
+        m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
+        m_list = m_list * (max_m / np.max(m_list))
+        m_list = torch.FloatTensor(m_list).to(device)
+        self.m_list = m_list
+        assert s > 0
+        self.s = s
+        self.weight = weight
+        self.ce_instance = CrossEntropyWithInstanceWeights(class_weights=weight)
+
+    def forward(self, x, target, instance_weights):
+        index = torch.zeros_like(x, dtype=torch.uint8).to(device)
+        index.scatter_(1, target.data.view(-1, 1), 1)
+        
+        index_float = index.type(torch.FloatTensor).to(device)
+        batch_m = torch.matmul(self.m_list[None, :], index_float.transpose(0,1))
+        batch_m = batch_m.view((-1, 1))
+        x_m = x - batch_m
+    
+        output = torch.where(index, x_m, x)
+        return self.ce_instance(self.s*output, target, instance_weights=instance_weights)
+
+
 class SelfAdjDiceLoss(torch.nn.Module):
     r"""
     Creates a criterion that optimizes a multi-class Self-adjusting Dice Loss
