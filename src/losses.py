@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
+import pdb
 
 '''
 focal loss and ldam loss taken from https://github.com/kaidic/LDAM-DRW
@@ -68,7 +68,6 @@ class LDAMLoss(nn.Module):
     def forward(self, x, target):
         index = torch.zeros_like(x, dtype=torch.uint8).to(device)
         index.scatter_(1, target.data.view(-1, 1), 1)
-        
         index_float = index.type(torch.FloatTensor).to(device)
         batch_m = torch.matmul(self.m_list[None, :], index_float.transpose(0,1))
         batch_m = batch_m.view((-1, 1))

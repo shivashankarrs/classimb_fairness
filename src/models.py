@@ -48,7 +48,7 @@ class MLP(nn.Module):
     def fit(self, X_train, y_train, X_val, y_val, optimizer, instance_weights=None, n_iter=100, batch_size=100, max_patience=10):
         X_val_tensor, y_val_tensor = variable(torch.FloatTensor(X_val)), y_val
         train_dataset = ImbDataset(X_train, y_train, instance_weights)
-        train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+        train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         best_score = -1
         best_state_dict = self.state_dict()
         patience = 0
