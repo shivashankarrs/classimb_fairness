@@ -5,6 +5,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.dummy import DummyClassifier
 from sklearn.utils import shuffle
 from sklearn.metrics import f1_score
+from imblearn.over_sampling import RandomOverSampler
 
 from collections import Counter, defaultdict
 
@@ -221,13 +222,14 @@ def run_all_losses(option='original'):
     unique, counts = np.unique(y_m_train, return_counts=True)
     cls_num_list = counts.tolist()
     beta = 0.9999
-    effective_num = 1.0 - np.power(beta, cls_num_list)
+    #https://openaccess.thecvf.com/content_CVPR_2019/papers/Cui_Class-Balanced_Loss_Based_on_Effective_Number_of_Samples_CVPR_2019_paper.pdf
+    effective_num = 1.0 - np.power(beta, cls_num_list) 
     per_cls_weights = (1.0 - beta) / np.array(effective_num)
     per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
     per_cls_weights = variable(torch.FloatTensor(per_cls_weights))
 
 
-    #protected classes effective weight
+    #protected classes effective weight (this is different from inverse frequency as it is way more smooth e.g. doesn't change the distro that much)
     unique, counts = np.unique(y_p_train, return_counts=True)
     clsp_num_list = counts.tolist()
     beta = 0.9999
@@ -245,10 +247,22 @@ def run_all_losses(option='original'):
     criterion4 = F.cross_entropy
     criterion5 = CrossEntropyWithInstanceWeights()
     criterion6 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
+    #no class weight
+    criterion7 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=2)
+    #ldam where cls_num_list comes from protected classes not real classes
 
-    criterions = {'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4, 'instanceweights': criterion5, 'ldaminstance': criterion6}
+    criterions = {'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4, 'instanceweights': criterion5, 'ldaminstance': criterion6, 'ldaminstnoclass':criterion7}
+    criterion_descriptions = {
+        'ldam': 'normal ldam with effective class ratios', 
+        'focal': 'focal loss with effective class ratios', 
+        'adjdice': 'self adjusted dice implementation might have bugs', 
+        'crosent': 'cross entropy loss', 
+        'instanceweights': 'cross entropy with both instance weights (based on effective protected ratio ) and class weights (based on effective class ratio)', 
+        'ldaminstance': 'ldam with both effective class ratio reweighting and effective instance weights based on effective protected classes ratio', 
+        'ldaminstnoclass': 'like ldaminstance only no effective class ratio is applied, only effective protected class ratio'
+        }
     for c_name, criterion in criterions.items():
-        logging.info(f"loss: {c_name}")
+        logging.info(f"loss: {c_name}: {criterion_descriptions[c_name]}")
         results[option][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
         normed_linear = True if c_name == 'ldam' else False
