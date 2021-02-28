@@ -5,9 +5,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.dummy import DummyClassifier
 from sklearn.utils import shuffle
 from sklearn.metrics import f1_score
-
 from collections import Counter, defaultdict
-
 import json
 from collections import defaultdict
 import sys
@@ -57,12 +55,12 @@ def group_evaluation(preds, labels, p_labels, silence=True):
     TPR1 = tp1/(fn1+tp1)
     TNR1 = tn1/(tn1+fp1)
     
-    acc_0 = f1_score(g0_labels, g0_preds)
-    acc_1 = f1_score(g1_labels, g1_preds)
+    f1_0 = f1_score(g0_labels, g0_preds, average='macro')
+    f1_1 = f1_score(g1_labels, g1_preds, average='macro')
 
     if not silence:
-        print("Accuracy 0: {}".format(acc_0))
-        print("Accuracy 1: {}".format(acc_1))
+        print("F1 0: {}".format(f1_0))
+        print("F1 1: {}".format(f1_1))
 
         print("TPR 0: {}".format(TPR0))
         print("TPR 1: {}".format(TPR1))
@@ -70,18 +68,18 @@ def group_evaluation(preds, labels, p_labels, silence=True):
         print("TNR 0: {}".format(TNR0))
         print("TNR 1: {}".format(TNR1))
 
-        print("TPR gap: {}".format(TPR0-TPR1))
-        print("TNR gap: {}".format(TNR0-TNR1))
+        print("TPR gap: {}".format(abs(TPR0-TPR1)))
+        print("TNR gap: {}".format(abs(TNR0-TNR1)))
 
-    return {"Accuracy_0": acc_0,
-            "Accuracy_1":acc_1,
+    return {"F1_0": f1_0,
+            "F1_1": f1_1,
             "TPR_0":TPR0,
             "TPR_1":TPR1,
             "TNR_0":TNR0,
             "TNR_1":TNR1,
             "TPR_gap":(TPR0-TPR1),
             "TNR_gap":(TNR0-TNR1),
-            "F1 GAP": (acc_0-acc_1)}
+            "F1 GAP": abs(f1_0-f1_1)}
 
 def get_TPR(y_main, y_hat_main, y_protected):
     
@@ -281,8 +279,6 @@ def pretty_print(results, option='original', output_csv_dir='./'):
     for option, res in results.items():
         df = pd.DataFrame(res)
         df.to_csv(os.path.join(output_csv_dir, f"{option}_results.csv"))
-
-    
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
