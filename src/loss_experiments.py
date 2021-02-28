@@ -77,8 +77,8 @@ def group_evaluation(preds, labels, p_labels, silence=True):
             "TPR_1":TPR1,
             "TNR_0":TNR0,
             "TNR_1":TNR1,
-            "TPR_gap":(TPR0-TPR1),
-            "TNR_gap":(TNR0-TNR1),
+            "TPR_gap":abs(TPR0-TPR1),
+            "TNR_gap":abs(TNR0-TNR1),
             "F1 GAP": abs(f1_0-f1_1)}
 
 def get_TPR(y_main, y_hat_main, y_protected):
