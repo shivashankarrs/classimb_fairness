@@ -68,7 +68,7 @@ def group_evaluation(preds, labels, p_labels, silence=True):
         print("TNR 0: {}".format(TNR0))
         print("TNR 1: {}".format(TNR1))
 
-        print("TPR gap: {}".format(abs(TPR0-TPR1)))
+        print("TPR gap: {}".format(  (TPR0-TPR1)))
         print("TNR gap: {}".format(abs(TNR0-TNR1)))
 
     return {"F1_0": f1_0,
@@ -170,7 +170,7 @@ def run_all_losses(option='original'):
     DO_RANDOM = True
     DO_TUNE_LDAM = False
     DO_TUNE_FOCAL = False
-    SAVE_CROSSENTROPY_300D = False
+    SAVE_CROSSENTROPY_300D = True
     logging.info('loading train dev test sets...')
     train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option)
     dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option)
@@ -273,10 +273,23 @@ def run_all_losses(option='original'):
         #get the representation from the trained MLP for MLP
         if SAVE_CROSSENTROPY_300D and criterion == criterion4:
             x_train_repr, x_dev_repr, x_test_repr = model.get_hidden(x_train), model.get_hidden(x_dev), model.get_hidden(x_test)
+            train_data['hidden'] = x_train_repr
+            dev_data['hidden'] = x_dev_repr
+            test_data['hidden'] = x_test_repr
             np.save('../datasets/deepmoji/x_{}_300d.npy'.format('train'), x_train_repr)
             np.save('../datasets/deepmoji/x_{}_300d.npy'.format('dev'), x_dev_repr)
             np.save('../datasets/deepmoji/x_{}_300d.npy'.format('test'), x_test_repr)
 
+            import pickle
+            with open('../datasets/deepmoji/train_with_hidden.pickle', 'wb') as handle:
+                pickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            with open('../datasets/deepmoji/dev_with_hidden.pickle', 'wb') as handle:
+                pickle.dump(dev_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            with open('../datasets/deepmoji/test_with_hidden.pickle', 'wb') as handle:
+                pickle.dump(test_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
         f1 = model.score(x_test, y_m_test)
         y_test_pred = model.predict(x_test)
         _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
