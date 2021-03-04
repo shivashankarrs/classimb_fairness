@@ -5,6 +5,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.dummy import DummyClassifier
 from sklearn.utils import shuffle
 from sklearn.metrics import f1_score
+from sklearn.cluster import KMeans, AgglomerativeClustering
 from collections import Counter, defaultdict
 import json
 from collections import defaultdict
@@ -171,6 +172,9 @@ def run_all_losses(option='original'):
     DO_TUNE_LDAM = False
     DO_TUNE_FOCAL = False
     SAVE_CROSSENTROPY_300D = True
+    #uses clustering membership instead of y_p_train
+    DO_CLUSTERING = False
+
     logging.info('loading train dev test sets...')
     train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option)
     dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option)
@@ -180,7 +184,13 @@ def run_all_losses(option='original'):
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
     logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
 
-    
+    if DO_CLUSTERING:
+        n_clusters = (np.max(y_p_train) + 1) * (np.max(y_m_train) + 1)
+        #clusterer = AgglomerativeClustering(n_clusters=n_clusters)
+        clusterer = KMeans(n_clusters=n_clusters)
+        y_c_train = clusterer.fit_predict(x_train)
+        y_p_train = y_c_train
+
     if DO_SVM:
         model = LinearSVC(fit_intercept=True, class_weight='balanced', dual=False, C=0.1, max_iter=10000)
         model.fit(x_train, y_m_train)
@@ -246,9 +256,13 @@ def run_all_losses(option='original'):
     criterion6 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
     #no class weight
     criterion7 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=2)
-    #ldam where cls_num_list comes from protected classes not real classes
+    #ldam where both class and group effective numbers are used
+    criterion8 = GLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, max_m=0.5, weight=per_cls_weights, s=30, g=0.5)
 
-    criterions = {'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4, 'instanceweights': criterion5, 'ldaminstance': criterion6, 'ldaminstnoclass':criterion7}
+    criterions = {
+        'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4,
+        'instanceweights': criterion5, 'ldaminstance': criterion6, 'ldaminstnoclass':criterion7,
+        'gldam':criterion8}
     criterion_descriptions = {
         'ldam': 'normal ldam with effective class ratios', 
         'focal': 'focal loss with effective class ratios', 
@@ -256,7 +270,8 @@ def run_all_losses(option='original'):
         'crosent': 'cross entropy loss', 
         'instanceweights': 'cross entropy with both instance weights (based on effective protected ratio ) and class weights (based on effective class ratio)', 
         'ldaminstance': 'ldam with both effective class ratio reweighting and effective instance weights based on effective protected classes ratio', 
-        'ldaminstnoclass': 'like ldaminstance only no effective class ratio is applied, only effective protected class ratio'
+        'ldaminstnoclass': 'like ldaminstance only no effective class ratio is applied, only effective protected class ratio',
+        'gldam': 'like ldam but in addition to delta_y, delta_g is also subtracted from logits'
         }
     for c_name, criterion in criterions.items():
         logging.info(f"loss: {c_name}: {criterion_descriptions[c_name]}")
@@ -268,7 +283,7 @@ def run_all_losses(option='original'):
         optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
         #equal weight for all samples
         #instance_weights = np.ones(y_m_train.shape[0])
-        model.fit(x_train, y_m_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
+        model.fit(x_train, y_m_train, y_p_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
         
         #get the representation from the trained MLP for MLP
         if SAVE_CROSSENTROPY_300D and criterion == criterion4:
