@@ -16,6 +16,7 @@ from losses import *
 from models import MLP, variable
 import pickle
 import logging
+import random
 import pandas as pd
 import pdb
 import sys
@@ -31,6 +32,13 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import confusion_matrix
+
+
+
+def set_seed(seed=0):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    random.seed(seed)
 
 def group_evaluation(preds, labels, p_labels, silence=True):
 
@@ -244,8 +252,29 @@ def run_all_losses(option='original'):
     per_clsp_weights = (1.0 - beta) / np.array(effective_num)
     per_clsp_weights = per_clsp_weights / np.sum(per_clsp_weights) * len(clsp_num_list)
     per_clsp_weights = variable(torch.FloatTensor(per_clsp_weights))
-    #instance_weights = np.ones(y_m_train.shape[0])
-    instance_weights = per_clsp_weights[y_m_train].detach().cpu().numpy()
+
+    
+    #instance_weights using effective number (smoothed version of inverse frequency)
+    all_mps = []
+    for m, p in zip(y_m_train, y_p_train):
+        all_mps.append((m, p))
+    all_mp_count = Counter(all_mps)
+    pms = []
+    pm_counts = []
+    for k, v in all_mp_count.items():
+        pms.append(k)
+        pm_counts.append(v)
+    pm_counts_id = {k:i for i, k in enumerate(pms)}
+    beta = 0.9999
+    effective_num = 1.0 - np.power(beta, pm_counts)
+    per_instance_weights = (1.0 - beta) / np.array(effective_num)
+    per_instance_weights = per_instance_weights / np.sum(per_instance_weights) * len(pm_counts)
+    instance_weights = np.zeros(y_p_train.shape[0])
+    for i in range(instance_weights.shape[0]):
+        instance_weights[i] = per_instance_weights[pm_counts_id[all_mps[i]]]
+
+    
+    
 
     
     criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
@@ -253,31 +282,30 @@ def run_all_losses(option='original'):
     criterion3 = SelfAdjDiceLoss()
     criterion4 = F.cross_entropy
     criterion5 = CrossEntropyWithInstanceWeights()
-    criterion6 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
-    #no class weight
-    criterion7 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=2)
-    #ldam where both class and group effective numbers are used
-    criterion8 = GLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, max_m=0.5, weight=per_cls_weights, s=30, g=0.5)
 
-    criterions = {
-        'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4,
-        'instanceweights': criterion5, 'ldaminstance': criterion6, 'ldaminstnoclass':criterion7,
-        'gldam':criterion8}
+    criterions = {'focal':criterion1, 'adjdice':criterion3}
+
+    for class_weight in [None, per_cls_weights]:
+        for use_instance in [False, True]:
+            for ldams in [1, 30]:
+                for ldamc in [0, 0.5, 1]:
+                    for ldamg in [0, 0.5, 1]:
+                        if ldams == 30 and ldamc == 0 and ldamg == 0:
+                            continue
+                        criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, max_m=0.5, class_weight=class_weight, ldams=ldams, ldamc=ldamc, ldamg=ldamg, use_instance=use_instance)
+                        c_name = repr(criterion)
+                        criterions[c_name] = criterion
+
     criterion_descriptions = {
-        'ldam': 'normal ldam with effective class ratios', 
         'focal': 'focal loss with effective class ratios', 
-        'adjdice': 'self adjusted dice implementation might have bugs', 
-        'crosent': 'cross entropy loss', 
-        'instanceweights': 'cross entropy with both instance weights (based on effective protected ratio ) and class weights (based on effective class ratio)', 
-        'ldaminstance': 'ldam with both effective class ratio reweighting and effective instance weights based on effective protected classes ratio', 
-        'ldaminstnoclass': 'like ldaminstance only no effective class ratio is applied, only effective protected class ratio',
-        'gldam': 'like ldam but in addition to delta_y, delta_g is also subtracted from logits'
+        'adjdice': 'self adjusted dice implementation might have bugs'
         }
     for c_name, criterion in criterions.items():
-        logging.info(f"loss: {c_name}: {criterion_descriptions[c_name]}")
+        set_seed(0)
+        logging.info(f"loss: {c_name}: {criterion_descriptions.get(c_name, 'no description')}")
         results[option][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
-        normed_linear = True if c_name == 'ldam' else False
+        normed_linear = True if 'ldam' in c_name else False
         model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
         model.to(device)
         optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)

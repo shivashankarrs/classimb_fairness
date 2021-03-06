@@ -101,6 +101,8 @@ def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.uti
             loss = criterion(output, target, instance_weights)
         elif isinstance(criterion, losses.GLDAMLoss):
             loss = criterion(output, target, group)
+        elif isinstance(criterion, losses.GeneralLDAMLoss):
+            loss = criterion(output, target, group, instance_weights)
         else:
             loss = criterion(output, target)
         epoch_loss += loss.data
