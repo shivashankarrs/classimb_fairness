@@ -5,6 +5,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.dummy import DummyClassifier
 from sklearn.utils import shuffle
 from sklearn.metrics import f1_score
+from sklearn.cluster import KMeans, AgglomerativeClustering
 from collections import Counter, defaultdict
 import json
 from collections import defaultdict
@@ -15,6 +16,7 @@ from losses import *
 from models import MLP, variable
 import pickle
 import logging
+import random
 import pandas as pd
 import pdb
 import sys
@@ -30,6 +32,13 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import confusion_matrix
+
+
+
+def set_seed(seed=0):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    random.seed(seed)
 
 def group_evaluation(preds, labels, p_labels, silence=True):
 
@@ -163,7 +172,7 @@ def tune_focal(x_train, y_m_train, x_dev, y_m_dev):
     print(results)
     return best_f1, best_s, best_max_m
 
-def run_all_losses(option='original'):
+def run_all_losses(option='original', class_balance=0.5):
     results = defaultdict(dict)
     #results[dataset_option][model][measure] = value
     DO_SVM = False
@@ -171,16 +180,26 @@ def run_all_losses(option='original'):
     DO_TUNE_LDAM = False
     DO_TUNE_FOCAL = False
     SAVE_CROSSENTROPY_300D = True
+    #uses clustering membership instead of y_p_train
+    DO_CLUSTERING = False
+
     logging.info('loading train dev test sets...')
-    train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option)
-    dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option)
-    test_data = load_data_deepmoji('../datasets/deepmoji/test', option=option)
+    train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option, class_balance=class_balance)
+    dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option, class_balance=class_balance)
+    test_data = load_data_deepmoji('../datasets/deepmoji/test', option=option, class_balance=class_balance)
+
     x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
     x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
     logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
 
-    
+    if DO_CLUSTERING:
+        n_clusters = (np.max(y_p_train) + 1) * (np.max(y_m_train) + 1)
+        #clusterer = AgglomerativeClustering(n_clusters=n_clusters)
+        clusterer = KMeans(n_clusters=n_clusters)
+        y_c_train = clusterer.fit_predict(x_train)
+        y_p_train = y_c_train
+
     if DO_SVM:
         model = LinearSVC(fit_intercept=True, class_weight='balanced', dual=False, C=0.1, max_iter=10000)
         model.fit(x_train, y_m_train)
@@ -234,41 +253,62 @@ def run_all_losses(option='original'):
     per_clsp_weights = (1.0 - beta) / np.array(effective_num)
     per_clsp_weights = per_clsp_weights / np.sum(per_clsp_weights) * len(clsp_num_list)
     per_clsp_weights = variable(torch.FloatTensor(per_clsp_weights))
-    #instance_weights = np.ones(y_m_train.shape[0])
-    instance_weights = per_clsp_weights[y_m_train].detach().cpu().numpy()
 
     
+    #instance_weights using effective number (smoothed version of inverse frequency)
+    all_mps = []
+    for m, p in zip(y_m_train, y_p_train):
+        all_mps.append((m, p))
+    all_mp_count = Counter(all_mps)
+    pms = []
+    pm_counts = []
+    for k, v in all_mp_count.items():
+        pms.append(k)
+        pm_counts.append(v)
+    pm_counts_id = {k:i for i, k in enumerate(pms)}
+    beta = 0.9999
+    effective_num = 1.0 - np.power(beta, pm_counts)
+    per_instance_weights = (1.0 - beta) / np.array(effective_num)
+    per_instance_weights = per_instance_weights / np.sum(per_instance_weights) * len(pm_counts)
+    instance_weights = np.zeros(y_p_train.shape[0])
+    for i in range(instance_weights.shape[0]):
+        instance_weights[i] = per_instance_weights[pm_counts_id[all_mps[i]]]
+
     criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
     criterion2 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
     criterion3 = SelfAdjDiceLoss()
     criterion4 = F.cross_entropy
     criterion5 = CrossEntropyWithInstanceWeights()
-    criterion6 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
-    #no class weight
-    criterion7 = LDAMLossInstanceWeight(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=2)
-    #ldam where cls_num_list comes from protected classes not real classes
 
-    criterions = {'ldam':criterion2, 'focal':criterion1, 'adjdice':criterion3, 'crosent':criterion4, 'instanceweights': criterion5, 'ldaminstance': criterion6, 'ldaminstnoclass':criterion7}
+    criterions = {'focal':criterion1, 'adjdice':criterion3, 'cross-entropy': criterion4}
+
+    for class_weight in [None, per_cls_weights]:
+        for use_instance in [False, True]:
+            for ldams in [1, 30]:
+                for ldamc in [0, 0.5, 1]:
+                    for ldamg in [0, 0.5, 1]:
+                        if ldams == 30 and ldamc == 0 and ldamg == 0:
+                            continue
+                        criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, max_m=0.5, class_weight=class_weight, ldams=ldams, ldamc=ldamc, ldamg=ldamg, use_instance=use_instance)
+                        c_name = repr(criterion)
+                        criterions[c_name] = criterion
+
     criterion_descriptions = {
-        'ldam': 'normal ldam with effective class ratios', 
         'focal': 'focal loss with effective class ratios', 
-        'adjdice': 'self adjusted dice implementation might have bugs', 
-        'crosent': 'cross entropy loss', 
-        'instanceweights': 'cross entropy with both instance weights (based on effective protected ratio ) and class weights (based on effective class ratio)', 
-        'ldaminstance': 'ldam with both effective class ratio reweighting and effective instance weights based on effective protected classes ratio', 
-        'ldaminstnoclass': 'like ldaminstance only no effective class ratio is applied, only effective protected class ratio'
+        'adjdice': 'self adjusted dice implementation might have bugs'
         }
     for c_name, criterion in criterions.items():
-        logging.info(f"loss: {c_name}: {criterion_descriptions[c_name]}")
+        set_seed(0)
+        logging.info(f"loss: {c_name}: {criterion_descriptions.get(c_name, 'no description')}")
         results[option][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
-        normed_linear = True if c_name == 'ldam' else False
+        normed_linear = True if 'ldam' in c_name else False
         model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
         model.to(device)
         optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
         #equal weight for all samples
         #instance_weights = np.ones(y_m_train.shape[0])
-        model.fit(x_train, y_m_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
+        model.fit(x_train, y_m_train, y_p_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
         
         #get the representation from the trained MLP for MLP
         if SAVE_CROSSENTROPY_300D and criterion == criterion4:
@@ -276,18 +316,18 @@ def run_all_losses(option='original'):
             train_data['hidden'] = x_train_repr
             dev_data['hidden'] = x_dev_repr
             test_data['hidden'] = x_test_repr
-            np.save('../datasets/deepmoji/x_{}_300d.npy'.format('train'), x_train_repr)
-            np.save('../datasets/deepmoji/x_{}_300d.npy'.format('dev'), x_dev_repr)
-            np.save('../datasets/deepmoji/x_{}_300d.npy'.format('test'), x_test_repr)
+            np.save('../datasets/deepmoji/x_{}_{}_{}_300d.npy'.format(option, 'train', class_balance), x_train_repr)
+            np.save('../datasets/deepmoji/x_{}_{}_{}_300d.npy'.format(option, 'dev', class_balance), x_dev_repr)
+            np.save('../datasets/deepmoji/x_{}_{}_{}_300d.npy'.format(option, 'test', class_balance), x_test_repr)
 
             import pickle
-            with open('../datasets/deepmoji/train_with_hidden.pickle', 'wb') as handle:
+            with open('../datasets/deepmoji/train_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('../datasets/deepmoji/dev_with_hidden.pickle', 'wb') as handle:
+            with open('../datasets/deepmoji/dev_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(dev_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('../datasets/deepmoji/test_with_hidden.pickle', 'wb') as handle:
+            with open('../datasets/deepmoji/test_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(test_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
         f1 = model.score(x_test, y_m_test)
@@ -301,14 +341,20 @@ def run_all_losses(option='original'):
     return results    
 
 
-def pretty_print(results, option='original', output_csv_dir='./'):
+def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_results.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results.csv"))
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     all_results = defaultdict(dict)
-    for option in ['original']:
-        all_results.update(run_all_losses(option=option))
+    all_results.update(run_all_losses(option='original'))
     pretty_print(all_results)
+    all_results = defaultdict(dict)
+
+    for cb in [0.5, 0.7, 0.9]:
+        for option in ['inlp0.5', 'inlp0.6', 'inlp0.7', 'inlp0.8', 'inlp0.9']:
+            all_results.update(run_all_losses(option=option, class_balance=cb))
+        pretty_print(all_results, class_balance=cb)
+        all_results = defaultdict(dict)

@@ -3,7 +3,7 @@ import numpy as np
 import os, math
 
 
-DATA_PATH = "/Users/sssub/Documents/GitHub/classimb_fairness/class_imbalance/datasets/"
+DATA_PATH = "/home/sssub/classimb_fairness-hiddenreps/datasets/"
 
 def get_sizes(base_size):
     black = 0.18 #8780
@@ -17,11 +17,11 @@ def get_sizes(base_size):
     sample_size = [pos_pos_size, pos_neg_size, neg_pos_size, neg_neg_size]
     return sample_size
 
-def get_inlp_sizes(base_size, black_ratio, white_ratio):
+def get_inlp_sizes(base_size, black_ratio, white_ratio, class_balance=0.5):
     black = black_ratio
     white = white_ratio
     pos = base_size
-    neg = base_size
+    neg = base_size * ((1-class_balance)/class_balance)
     pos_pos_size, pos_neg_size, neg_pos_size, neg_neg_size = [math.ceil(pos*black), math.ceil(pos*white), math.ceil(neg*white), \
                                                           math.ceil(neg*black)]
     print(pos_pos_size, pos_neg_size, neg_pos_size, neg_neg_size)
@@ -33,7 +33,7 @@ def downsample(vecs, size):
     np.random.shuffle(vecs)
     return vecs[:size]
 
-def load_data_deepmoji(path, option='original'):
+def load_data_deepmoji(path, option='original', class_balance=0.5):
     fnames = ["pos_pos.npy", "pos_neg.npy", "neg_pos.npy", "neg_neg.npy"]
     protected_labels = [1, 0, 1, 0]
     main_labels = [1, 1, 0, 0]
@@ -46,13 +46,15 @@ def load_data_deepmoji(path, option='original'):
     if option=='original':
         sample_size = get_sizes(check_data.shape[0])
     elif option=='inlp0.5':
-        sample_size = get_inlp_sizes(check_data.shape[0], 0.5, 0.5)
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.5, 0.5, class_balance)
     elif option=='inlp0.6':
-        sample_size = get_inlp_sizes(check_data.shape[0], 0.6, 0.4)
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.6, 0.4, class_balance)
     elif option=='inlp0.7':
-        sample_size = get_inlp_sizes(check_data.shape[0], 0.7, 0.3)
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.7, 0.3, class_balance)
     elif option=='inlp0.8':
-        sample_size = get_inlp_sizes(check_data.shape[0], 0.8, 0.2)
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.8, 0.2, class_balance)
+    elif option=='inlp0.9':
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.9, 0.1, class_balance)
         
     print(check_data.shape[0], sample_size)
 
@@ -104,10 +106,9 @@ def dump_dataset(path, data):
     return 
 
 if __name__ == "__main__":
-    train_biasbios = load_data_biasbios(DATA_PATH+"biography/test.pickle", "../resources/professions.txt", DATA_PATH+"biography/features/bert_encode_biasbios/test_cls.npy")
-    print (len(train_biasbios), train_biasbios['feature'].shape, train_biasbios['feature'][0].shape)
-
-    #train_biasbios = load_data_deepmoji(DATA_PATH+"deepmoji/test/", option='inlp0.8')
-    #from collections import Counter
-    #print (len(train_biasbios), len(train_biasbios['labels']), train_biasbios['feature'].shape)
-    #print (Counter(train_biasbios['labels']), Counter(train_biasbios['protected_attribute']))
+    #train_biasbios = load_data_biasbios(DATA_PATH+"biography/test.pickle", "../resources/professions.txt", DATA_PATH+"biography/features/bert_encode_biasbios/test_cls.npy")
+    #print (len(train_biasbios), train_biasbios['feature'].shape, train_biasbios['feature'][0].shape)
+    train_biasbios = load_data_deepmoji(DATA_PATH+"deepmoji/train/", option='inlp0.8', class_balance=0.9)
+    from collections import Counter
+    print (len(train_biasbios), len(train_biasbios['labels']), train_biasbios['feature'].shape)
+    print (Counter(train_biasbios['labels']), Counter(train_biasbios['protected_attribute']))
