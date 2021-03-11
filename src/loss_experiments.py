@@ -266,6 +266,7 @@ def run_all_losses(option='original', class_balance=0.5):
         pms.append(k)
         pm_counts.append(v)
     pm_counts_id = {k:i for i, k in enumerate(pms)}
+    y_mp_train = np.zeros_like(y_p_train)
     beta = 0.9999
     effective_num = 1.0 - np.power(beta, pm_counts)
     per_instance_weights = (1.0 - beta) / np.array(effective_num)
@@ -273,6 +274,7 @@ def run_all_losses(option='original', class_balance=0.5):
     instance_weights = np.zeros(y_p_train.shape[0])
     for i in range(instance_weights.shape[0]):
         instance_weights[i] = per_instance_weights[pm_counts_id[all_mps[i]]]
+        y_mp_train[i] = pm_counts_id[all_mps[i]]
 
     criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
     criterion2 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
@@ -281,17 +283,22 @@ def run_all_losses(option='original', class_balance=0.5):
     criterion5 = CrossEntropyWithInstanceWeights()
 
     criterions = {'focal':criterion1, 'adjdice':criterion3, 'cross-entropy': criterion4}
-
-    for class_weight in [None, per_cls_weights]:
-        for use_instance in [False, True]:
-            for ldams in [1, 30]:
-                for ldamc in [0, 0.5, 1]:
-                    for ldamg in [0, 0.5, 1]:
-                        if ldams == 30 and ldamc == 0 and ldamg == 0:
-                            continue
-                        criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, max_m=0.5, class_weight=class_weight, ldams=ldams, ldamc=ldamc, ldamg=ldamg, use_instance=use_instance)
-                        c_name = repr(criterion)
-                        criterions[c_name] = criterion
+    for mul_c_g in [False]:
+        for class_weight in [None, per_cls_weights]:
+            for use_instance in [False, True]:
+                for ldams in [1, 30]:
+                    for ldamc in [0, 1]:
+                        for ldamg in [0, 1]:
+                            for ldamcg in [0, 1]:
+                                if use_instance and class_weight is not None:
+                                    continue
+                                else:
+                                    pass
+                                criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+                                mp_num_list=pm_counts, max_m=0.5, class_weight=class_weight, ldams=ldams, ldamc=ldamc, 
+                                ldamg=ldamg, ldamcg=ldamcg, use_instance=use_instance, ldam_mul_c_g=mul_c_g)
+                                c_name = repr(criterion)
+                                criterions[c_name] = criterion
 
     criterion_descriptions = {
         'focal': 'focal loss with effective class ratios', 
@@ -305,10 +312,11 @@ def run_all_losses(option='original', class_balance=0.5):
         normed_linear = True if 'ldam' in c_name else False
         model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
         model.to(device)
+        #optimizer = torch.optim.SGD(model.parameters(), 0.1, momentum=0.9, weight_decay=2e-4)
         optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
         #equal weight for all samples
         #instance_weights = np.ones(y_m_train.shape[0])
-        model.fit(x_train, y_m_train, y_p_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
+        model.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
         
         #get the representation from the trained MLP for MLP
         if SAVE_CROSSENTROPY_300D and criterion == criterion4:
@@ -348,6 +356,7 @@ def pretty_print(results, option='original', output_csv_dir='./', class_balance=
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"using device {device}")
     all_results = defaultdict(dict)
     all_results.update(run_all_losses(option='original'))
     pretty_print(all_results)

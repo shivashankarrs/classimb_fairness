@@ -129,7 +129,7 @@ class GLDAMLoss(nn.Module):
 
 class GeneralLDAMLoss(nn.Module):
     
-    def __init__(self, cls_num_list, clsp_num_list, max_m=0.5, class_weight=None, ldams=30, ldamc=0.5, ldamg=0.5, use_instance=False):
+    def __init__(self, cls_num_list, clsp_num_list, mp_num_list, max_m=0.5, class_weight=None, ldams=30, ldamc=0.5, ldamg=0.5, ldamcg=0.5, use_instance=False, ldam_mul_c_g=False):
         '''
         cls_num_list: the number of instances in each class, a list of numbers where cls_num_list[0] is the number of instances in class 0
         clsp_num_list: the number of instances in each group
@@ -165,15 +165,25 @@ class GeneralLDAMLoss(nn.Module):
         g_list = 1.0 / np.sqrt(np.sqrt(clsp_num_list))
         g_list = g_list * (max_m / np.max(g_list))
         g_list = torch.FloatTensor(g_list).to(device)
+
+
+        mg_list = 1.0 / np.sqrt(np.sqrt(mp_num_list))
+        mg_list = mg_list * (max_m / np.max(mg_list))
+        mg_list = torch.FloatTensor(mg_list).to(device)
+
         self.g_list = g_list
         self.m_list = m_list
+        self.mg_list = mg_list
+
         assert ldams > 0
         #assert 0 <= g <= 1
         self.ldamg = ldamg
         self.ldams = ldams
         self.ldamc = ldamc
+        self.ldamcg = ldamcg
         self.use_instance = use_instance
         self.class_weight = class_weight
+        self.ldam_mul_c_g = ldam_mul_c_g
         self.ce_instance = CrossEntropyWithInstanceWeights(class_weights=self.class_weight)
 
     def __repr__(self):
@@ -183,9 +193,11 @@ class GeneralLDAMLoss(nn.Module):
         name.append(f"c{self.ldamc}")
         name.append(f"g{self.ldamg}")
         name.append('iw' if self.use_instance else 'noiw')
+        name.append('mulcg' if self.ldam_mul_c_g else 'subcg')
+        name.append(f"cg{self.ldamcg}")
         return '_'.join(name)
 
-    def forward(self, x, target, group, instance_weights):
+    def forward(self, x, target, group, targetgroup, instance_weights):
         if self.use_instance:
             assert instance_weights is not None
         index = torch.zeros_like(x, dtype=torch.uint8).to(device)
@@ -201,8 +213,19 @@ class GeneralLDAMLoss(nn.Module):
         #the following line makes batch_g a vector
         batch_g = torch.matmul(self.g_list[None, :], gindex_float.transpose(0,1))
         batch_g = batch_g.view((-1, 1))
-        
-        x_m = x - self.ldamc * batch_m - self.ldamg * batch_g
+
+        #do the same for targetgroup combination
+        mgindex = torch.zeros(x.shape[0], self.mg_list.shape[0],  dtype=torch.uint8).to(device)
+        mgindex.scatter_(1, targetgroup.data.view(-1, 1), 1)
+        mgindex_float = mgindex.type(torch.FloatTensor).to(device)
+        #the following line makes batch_cg a vector
+        batch_mg = torch.matmul(self.mg_list[None, :], mgindex_float.transpose(0,1))
+        batch_mg = batch_mg.view((-1, 1))
+
+        if self.ldam_mul_c_g:
+            x_m = x - batch_m * batch_g
+        else:
+            x_m = x - self.ldamc * batch_m - self.ldamg * batch_g - self.ldamcg * batch_mg
     
         output = torch.where(index, x_m, x)
         return self.ce_instance(self.ldams * output, target, instance_weights=instance_weights if self.use_instance else None)
