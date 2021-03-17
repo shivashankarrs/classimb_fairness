@@ -1,7 +1,7 @@
 import pickle
 import numpy as np
 import os, math
-
+from sklearn.utils import resample
 
 DATA_PATH = "/home/sssub/classimb_fairness-hiddenreps/datasets/"
 
@@ -32,6 +32,10 @@ def downsample(vecs, size):
     np.random.seed(1)
     np.random.shuffle(vecs)
     return vecs[:size]
+
+def upsample(vecs, labels, protected, size):
+    resampled_vecs, resampled_labels, resampled_protected = resample(vecs, labels, protected, n_samples=size, random_state=1)
+    return resampled_vecs, resampled_labels, resampled_protected
 
 def load_data_deepmoji(path, option='original', class_balance=0.5):
     fnames = ["pos_pos.npy", "pos_neg.npy", "neg_pos.npy", "neg_neg.npy"]

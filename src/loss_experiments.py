@@ -22,7 +22,7 @@ import pdb
 import sys
 sys.path.append('../')
 
-from data.process_data import load_data_deepmoji
+from data.process_data import load_data_deepmoji, upsample
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -182,6 +182,7 @@ def run_all_losses(option='original', class_balance=0.5):
     SAVE_CROSSENTROPY_300D = True
     #uses clustering membership instead of y_p_train
     DO_CLUSTERING = False
+    UPSAMPLE = True
 
     logging.info('loading train dev test sets...')
     train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option, class_balance=class_balance)
@@ -191,7 +192,29 @@ def run_all_losses(option='original', class_balance=0.5):
     x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
     x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
+
     logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
+
+    if UPSAMPLE:
+        trlabels = train_data['labels']
+        subsel = trlabels==0
+        sublabels = trlabels[subsel]
+        subfeature = train_data['feature'][subsel]
+        sub_pro_feature = train_data['protected_attribute'][subsel]
+        class_pos = np.sum(train_data['labels'])
+        class_neg = len(trlabels) - class_pos
+        resampled_feature, resampled_labels, resampled_protected = upsample(subfeature, sublabels, sub_pro_feature, abs(class_pos-class_neg))
+
+        print (train_data['feature'].shape, resampled_feature.shape)
+        x_aug_train = np.concatenate((train_data['feature'], resampled_feature), axis=0)
+        x_aug_p_train = np.concatenate((train_data['protected_attribute'], resampled_protected), axis=0)
+        x_aug_m_train = np.concatenate((train_data['labels'], resampled_labels), axis=0)
+        print ("UPSAMPLE", class_pos, class_neg, x_train.shape, y_p_train.shape, y_m_train.shape, class_pos, class_neg, resampled_feature.shape, resampled_labels.shape, resampled_protected.shape)    
+        print (x_aug_train.shape, x_aug_p_train.shape, x_aug_m_train.shape)
+        
+        from collections import Counter
+        print (Counter(x_aug_m_train))
+
 
     if DO_CLUSTERING:
         n_clusters = (np.max(y_p_train) + 1) * (np.max(y_m_train) + 1)
@@ -361,9 +384,9 @@ if __name__ == "__main__":
     all_results.update(run_all_losses(option='original'))
     pretty_print(all_results)
     all_results = defaultdict(dict)
-
+    '''
     for cb in [0.5, 0.7, 0.9]:
         for option in ['inlp0.5', 'inlp0.6', 'inlp0.7', 'inlp0.8', 'inlp0.9']:
             all_results.update(run_all_losses(option=option, class_balance=cb))
         pretty_print(all_results, class_balance=cb)
-        all_results = defaultdict(dict)
+        all_results = defaultdict(dict)'''
