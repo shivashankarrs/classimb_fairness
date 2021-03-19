@@ -305,23 +305,24 @@ def run_all_losses(option='original', class_balance=0.5):
     criterion4 = F.cross_entropy
     criterion5 = CrossEntropyWithInstanceWeights()
 
-    criterions = {'focal':criterion1, 'adjdice':criterion3, 'cross-entropy': criterion4}
-    for mul_c_g in [False]:
-        for class_weight in [None, per_cls_weights]:
-            for use_instance in [False, True]:
-                for ldams in [1, 30]:
-                    for ldamc in [0, 1]:
-                        for ldamg in [0, 1]:
-                            for ldamcg in [0, 1]:
-                                if use_instance and class_weight is not None:
-                                    continue
-                                else:
-                                    pass
-                                criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-                                mp_num_list=pm_counts, max_m=0.5, class_weight=class_weight, ldams=ldams, ldamc=ldamc, 
-                                ldamg=ldamg, ldamcg=ldamcg, use_instance=use_instance, ldam_mul_c_g=mul_c_g)
-                                c_name = repr(criterion)
-                                criterions[c_name] = criterion
+    criterions = {'focal':criterion1, 'cross-entropy': criterion4}
+    for max_m in [0.5]:
+        for mul_c_g in [False]:
+            for class_weight in [None, per_cls_weights]:
+                for use_instance in [False, True]:
+                    for ldams in [30]:
+                        for ldamc in [0, 1]:
+                            for ldamg in [0, 1]:
+                                for ldamcg in [0, 1]:
+                                    if use_instance and class_weight is not None:
+                                        continue
+                                    else:
+                                        pass
+                                    criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+                                    mp_num_list=pm_counts, max_m=max_m, class_weight=class_weight, ldams=ldams, ldamc=ldamc, 
+                                    ldamg=ldamg, ldamcg=ldamcg, use_instance=use_instance, ldam_mul_c_g=mul_c_g)
+                                    c_name = repr(criterion)
+                                    criterions[c_name] = criterion
 
     criterion_descriptions = {
         'focal': 'focal loss with effective class ratios', 
@@ -332,7 +333,7 @@ def run_all_losses(option='original', class_balance=0.5):
         logging.info(f"loss: {c_name}: {criterion_descriptions.get(c_name, 'no description')}")
         results[option][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
-        normed_linear = True if 'ldam' in c_name else False
+        normed_linear = True if 'ldam' in c_name.lower() else False
         model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
         model.to(device)
         #optimizer = torch.optim.SGD(model.parameters(), 0.1, momentum=0.9, weight_decay=2e-4)
@@ -382,11 +383,16 @@ if __name__ == "__main__":
     print(f"using device {device}")
     all_results = defaultdict(dict)
     all_results.update(run_all_losses(option='original'))
+    all_results['original']['inlp'] = {'f1':0.748, 'tpr': 0.128}
     pretty_print(all_results)
     all_results = defaultdict(dict)
-    '''
-    for cb in [0.5, 0.7, 0.9]:
-        for option in ['inlp0.5', 'inlp0.6', 'inlp0.7', 'inlp0.8', 'inlp0.9']:
+    inlp_results = defaultdict(dict)
+    inlp_results['inlp0.5'][0.9] = {'f1':0.639, 'tpr': 0.070}
+    inlp_results['inlp0.7'][0.9] = {'f1':0.683, 'tpr': 0.119}
+    inlp_results['inlp0.9'][0.9] = {'f1':0.705, 'tpr': 0.261}
+    for cb in [0.9]:
+        for option in ['inlp0.5', 'inlp0.7', 'inlp0.9']:
             all_results.update(run_all_losses(option=option, class_balance=cb))
+            all_results[option]['inlp'] = inlp_results[option][cb]
         pretty_print(all_results, class_balance=cb)
-        all_results = defaultdict(dict)'''
+        all_results = defaultdict(dict)

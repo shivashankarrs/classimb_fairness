@@ -157,18 +157,20 @@ class GeneralLDAMLoss(nn.Module):
         ldam cg with class weights and instance weight GeneralLDAMLoss(cls_num_list, clsp_num_list, max_m=0.5, class_weight=***, ldams=30, ldamc=0.5, ldamg=0.5, use_instance=True)
         '''
         super(GeneralLDAMLoss, self).__init__()
+        self.max_m = max_m
         m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
-        m_list = m_list * (max_m / np.max(m_list))
+        m_list = m_list * (self.max_m / np.max(m_list))
         m_list = torch.FloatTensor(m_list).to(device)
 
         #do the same for groups or protected labels
         g_list = 1.0 / np.sqrt(np.sqrt(clsp_num_list))
-        g_list = g_list * (max_m / np.max(g_list))
+        g_list = g_list * (self.max_m / np.max(g_list))
         g_list = torch.FloatTensor(g_list).to(device)
 
 
-        mg_list = 1.0 / np.sqrt(np.sqrt(mp_num_list))
-        mg_list = mg_list * (max_m / np.max(mg_list))
+        #mg_list = 1.0 / np.sqrt(np.sqrt(mp_num_list))
+        mg_list = 1.0 / np.power(mp_num_list, 0.25)
+        mg_list = mg_list * (self.max_m / np.max(mg_list))
         mg_list = torch.FloatTensor(mg_list).to(device)
 
         self.g_list = g_list
@@ -187,14 +189,16 @@ class GeneralLDAMLoss(nn.Module):
         self.ce_instance = CrossEntropyWithInstanceWeights(class_weights=self.class_weight)
 
     def __repr__(self):
-        name = ['generalldam']
-        name.append('cw' if self.class_weight is not None else 'nocw')
+        name = ['ldam']
+        name.append('iw' if self.use_instance else 'noiw')
+        name.append(f"cg{self.ldamcg}")
         name.append(f"s{self.ldams}")
+        name.append(f"maxm{self.max_m}")
+        name.append('cw' if self.class_weight is not None else 'nocw')
         name.append(f"c{self.ldamc}")
         name.append(f"g{self.ldamg}")
-        name.append('iw' if self.use_instance else 'noiw')
         name.append('mulcg' if self.ldam_mul_c_g else 'subcg')
-        name.append(f"cg{self.ldamcg}")
+        
         return '_'.join(name)
 
     def forward(self, x, target, group, targetgroup, instance_weights):
@@ -228,7 +232,10 @@ class GeneralLDAMLoss(nn.Module):
             x_m = x - self.ldamc * batch_m - self.ldamg * batch_g - self.ldamcg * batch_mg
     
         output = torch.where(index, x_m, x)
-        return self.ce_instance(self.ldams * output, target, instance_weights=instance_weights if self.use_instance else None)
+        if self.use_instance:
+            return self.ce_instance(self.ldams * output, target, instance_weights=instance_weights)
+        else:
+            return F.cross_entropy(self.ldams * output, target, weight=self.class_weight)
 
 class LDAMLossInstanceWeight(nn.Module):
     
