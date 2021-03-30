@@ -26,6 +26,7 @@ class MLP(nn.Module):
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = NormedLinear(hidden_size, output_size) if normed_linear else nn.Linear(hidden_size, output_size) 
         self.criterion = criterion
+        self.rho = 1 
     def forward(self, x):
         x = torch.tanh(self.fc1(x))
         x = self.fc2(x)
@@ -66,9 +67,6 @@ class MLP(nn.Module):
         if hasattr(self.criterion, 'class_weight'):
             class_weight = deepcopy(self.criterion.class_weight)
             self.criterion.class_weight = None
-
-
-
         for i in range(n_iter):
             #for use with sgd
             #adjust_learning_rate(optimizer, i, init_lr)
@@ -112,7 +110,7 @@ class ImbDataset(Dataset):
         return [sample for sample in self.X[sample_idx]]
 
 
-def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion=F.cross_entropy, regularize = False):
+def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion=F.cross_entropy, numclasses = 2, rho = 1, regularize = False):
     model.train()
     epoch_loss = 0
     for input, target, group, targetgroup, instance_weights in data_loader:
@@ -129,8 +127,9 @@ def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.uti
             loss = criterion(output, target)
         epoch_loss += loss.data
         if regularize:
-            reg = fair_reg(output[target==1], group[target==1])
-            epoch_loss += reg
+            for tval in range(numclasses):
+                reg = fair_reg(output[target==tval], group[target==tval])
+                epoch_loss += rho * reg
         loss.backward()
         optimizer.step()
     return epoch_loss / len(data_loader)
