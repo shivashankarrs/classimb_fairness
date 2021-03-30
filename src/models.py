@@ -15,6 +15,11 @@ from copy import deepcopy
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+def fair_reg(preds, Xp):
+    Xp = torch.cat((Xp, 1-Xp), dim=1)
+    viol = preds.mean()-(preds@Xp)/torch.max(Xp.sum(axis=0), torch.ones(Xp.shape[1])*1e-5)
+    return (viol**2).mean()
+
 class MLP(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, normed_linear=False, criterion=F.cross_entropy):
         super(MLP, self).__init__()
@@ -84,7 +89,6 @@ class MLP(nn.Module):
         self.load_state_dict(best_state_dict)
 
 
-
 class ImbDataset(Dataset):
     """load a dataset"""
     def __init__(self, X, y, y_p=None, y_mp=None, instance_weights=None):
@@ -108,7 +112,7 @@ class ImbDataset(Dataset):
         return [sample for sample in self.X[sample_idx]]
 
 
-def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion=F.cross_entropy):
+def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion=F.cross_entropy, regularize = False):
     model.train()
     epoch_loss = 0
     for input, target, group, targetgroup, instance_weights in data_loader:
@@ -124,6 +128,9 @@ def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.uti
         else:
             loss = criterion(output, target)
         epoch_loss += loss.data
+        if regularize:
+            reg = fair_reg(output[target==1], group[target==1])
+            epoch_loss += reg
         loss.backward()
         optimizer.step()
     return epoch_loss / len(data_loader)
