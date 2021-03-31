@@ -110,26 +110,20 @@ class ImbDataset(Dataset):
         return [sample for sample in self.X[sample_idx]]
 
 
-def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion=F.cross_entropy, numclasses = 2, rho = 1, regularize = False):
+def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion=F.cross_entropy):
     model.train()
     epoch_loss = 0
     for input, target, group, targetgroup, instance_weights in data_loader:
         input, target, group, targetgroup = variable(input), variable(target), variable(group), variable(targetgroup)
         optimizer.zero_grad()
         output = model(input)
-        if isinstance(criterion, losses.CrossEntropyWithInstanceWeights) or isinstance(criterion, losses.LDAMLossInstanceWeight):
+        if isinstance(criterion, losses.CrossEntropyWithInstanceWeights):
             loss = criterion(output, target, instance_weights)
-        elif isinstance(criterion, losses.GLDAMLoss):
-            loss = criterion(output, target, group)
         elif isinstance(criterion, losses.GeneralLDAMLoss):
             loss = criterion(output, target, group, targetgroup, instance_weights)
         else:
             loss = criterion(output, target)
         epoch_loss += loss.data
-        if regularize:
-            for tval in range(numclasses):
-                reg = fair_reg(output[target==tval], group[target==tval])
-                epoch_loss += rho * reg
         loss.backward()
         optimizer.step()
     return epoch_loss / len(data_loader)

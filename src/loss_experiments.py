@@ -112,66 +112,6 @@ def rms(arr):
     return np.sqrt(np.mean(np.square(arr)))
 
 
-def tune_ldam(x_train, y_m_train, x_dev, y_m_dev):
-    unique, counts = np.unique(y_m_train, return_counts=True)
-    cls_num_list = counts.tolist()
-    beta = 0.9999
-    effective_num = 1.0 - np.power(beta, cls_num_list)
-    per_cls_weights = (1.0 - beta) / np.array(effective_num)
-    per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
-    per_cls_weights = variable(torch.FloatTensor(per_cls_weights))
-    results = defaultdict(dict)
-    best_f1, best_s, best_max_m = 0, 0, 0
-    for s in [1, 4, 8, 16, 32, 64]:
-        for max_m in [0.5]:
-            criterion = LDAMLoss(cls_num_list=cls_num_list, max_m=max_m, weight=per_cls_weights, s=s)
-            #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
-            normed_linear = True
-            model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
-            model.to(device)
-            optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
-            #equal weight for all samples
-            instance_weights = np.ones(y_m_train.shape[0])
-            model.fit(x_train, y_m_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
-            f1 = model.score(x_dev, y_m_dev)
-            if f1 > best_f1:
-                best_f1 = f1
-                best_s = s
-                best_max_m = max_m
-            results[f"{s}"][f"{max_m}"] = f1
-    results['ldam_tune'] = results
-    print(results)
-    return best_f1, best_s, best_max_m
-
-def tune_focal(x_train, y_m_train, x_dev, y_m_dev):
-    unique, counts = np.unique(y_m_train, return_counts=True)
-    cls_num_list = counts.tolist()
-    beta = 0.9999
-    effective_num = 1.0 - np.power(beta, cls_num_list)
-    per_cls_weights = (1.0 - beta) / np.array(effective_num)
-    per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
-    per_cls_weights = variable(torch.FloatTensor(per_cls_weights))
-    results = defaultdict(dict)
-    best_f1, best_s, best_max_m = 0, 0, 0
-    for gamma in [1, 2, 4, 8, 16, 32, 64]:
-        criterion = criterion1 = FocalLoss(weight=per_cls_weights, gamma=gamma)
-        #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
-        normed_linear = True
-        model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
-        model.to(device)
-        optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
-        #equal weight for all samples
-        instance_weights = np.ones(y_m_train.shape[0])
-        model.fit(x_train, y_m_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
-        f1 = model.score(x_dev, y_m_dev)
-        if f1 > best_f1:
-            best_f1 = f1
-            best_s = gamma
-        results[f"{gamma}"] = f1
-    results['gamma_tune'] = results
-    print(results)
-    return best_f1, best_s, best_max_m
-
 def run_all_losses_biasbios():
     results = defaultdict(dict)
     DO_RANDOM = True
@@ -199,17 +139,6 @@ def run_all_losses_biasbios():
         #group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
         #results['rand'].update(group_results)
 
-    if DO_TUNE_LDAM:
-        #tuned and best s was between 0 and 4 e.g. 2
-        best_f1, best_s, best_max_m = tune_ldam(x_train, y_m_train, x_dev, y_m_dev)
-        print(f"ldam tuned: f1:{best_f1} s:{best_s} max_m:{best_max_m}")
-        sys.exit(0)
-
-    if DO_TUNE_FOCAL:
-        #tuned and best gamma was 1
-        best_f1, best_s, best_max_m = tune_focal(x_train, y_m_train, x_dev, y_m_dev)
-        print(f"ldam tuned: f1:{best_f1} s:{best_s} max_m:{best_max_m}")
-        sys.exit(0)
 
     unique, counts = np.unique(y_m_train, return_counts=True)
     cls_num_list = counts.tolist()
@@ -251,36 +180,34 @@ def run_all_losses_biasbios():
         instance_weights[i] = per_instance_weights[pm_counts_id[all_mps[i]]]
         y_mp_train[i] = pm_counts_id[all_mps[i]]
 
+    ldams = 30
     criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
-    criterion2 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
-    criterion3 = SelfAdjDiceLoss()
-    criterion4 = F.cross_entropy
-    criterion5 = CrossEntropyWithInstanceWeights()
-
-    criterions = {'focal':criterion1, 'adjdice':criterion3, 'cross-entropy': criterion4}
-    for mul_c_g in [False]:
-        for class_weight in [None, per_cls_weights]:
-            for use_instance in [False, True]:
-                for ldams in [1, 30]:
-                    for ldamc in [0, 0.5, 1]:
-                        for ldamg in [0, 0.5, 1]:
-                                if use_instance and class_weight is not None:
-                                    continue
-                                else:
-                                    pass
-                                criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-                                mp_num_list=pm_counts, max_m=0.5, class_weight=class_weight, ldams=ldams, ldamc=ldamc, 
-                                ldamg=ldamg, ldamcg=0, use_instance=use_instance, ldam_mul_c_g=mul_c_g)
-                                c_name = repr(criterion)
-                                criterions[c_name] = criterion
-
-    criterion_descriptions = {
-        'focal': 'focal loss with effective class ratios', 
-        'adjdice': 'self adjusted dice implementation might have bugs'
+    criterion2 = SelfAdjDiceLoss()
+    criterion3 = F.cross_entropy 
+    criterion4 = CrossEntropyWithInstanceWeights() #iw
+    criterion5 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=30) #ldam
+    criterion6 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=30) #ldam cw
+    criterion7 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=0, 
+    ldamg=0, ldamcg=0, use_instance=True, ldam_mul_c_g=False) #ldamiw
+    #criterion8 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+    #mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=1, 
+    #ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    
+    criterions = {
+        'focal':criterion1, 
+        'adjdice':criterion2, 
+        'CE': criterion3,
+        'iw':criterion4, 
+        'ldam':criterion5, 
+        'ldamcw':criterion6, 
+        'ldamiw':criterion7
+        #'ldamreg':criterion8
         }
+
     for c_name, criterion in criterions.items():
         set_seed(0)
-        logging.info(f"loss: {c_name}: {criterion_descriptions.get(c_name, 'no description')}")
+        logging.info(f"loss: {c_name}")
         results['bios'][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
         normed_linear = True if 'ldam' in c_name else False
@@ -324,8 +251,6 @@ def run_all_losses(option='original', class_balance=0.5):
     #results[dataset_option][model][measure] = value
     DO_SVM = False
     DO_RANDOM = True
-    DO_TUNE_LDAM = False
-    DO_TUNE_FOCAL = False
     SAVE_CROSSENTROPY_300D = True
     #uses clustering membership instead of y_p_train
     DO_CLUSTERING = False
@@ -394,17 +319,7 @@ def run_all_losses(option='original', class_balance=0.5):
         group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
         results[option]['rand'].update(group_results)
 
-    if DO_TUNE_LDAM:
-        #tuned and best s was between 0 and 4 e.g. 2
-        best_f1, best_s, best_max_m = tune_ldam(x_train, y_m_train, x_dev, y_m_dev)
-        print(f"ldam tuned: f1:{best_f1} s:{best_s} max_m:{best_max_m}")
-        sys.exit(0)
 
-    if DO_TUNE_FOCAL:
-        #tuned and best gamma was 1
-        best_f1, best_s, best_max_m = tune_focal(x_train, y_m_train, x_dev, y_m_dev)
-        print(f"ldam tuned: f1:{best_f1} s:{best_s} max_m:{best_max_m}")
-        sys.exit(0)
     unique, counts = np.unique(y_m_train, return_counts=True)
     cls_num_list = counts.tolist()
     beta = 0.9999
@@ -446,38 +361,34 @@ def run_all_losses(option='original', class_balance=0.5):
         instance_weights[i] = per_instance_weights[pm_counts_id[all_mps[i]]]
         y_mp_train[i] = pm_counts_id[all_mps[i]]
 
+    ldams = 30
     criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
-    criterion2 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=2)
-    criterion3 = SelfAdjDiceLoss()
-    criterion4 = F.cross_entropy
-    criterion5 = CrossEntropyWithInstanceWeights()
-
-    criterions = {'focal':criterion1, 'cross-entropy': criterion4}
-    for max_m in [0.5]:
-        for mul_c_g in [False]:
-            for class_weight in [None, per_cls_weights]:
-                for use_instance in [False, True]:
-                    for ldams in [30]:
-                        for ldamc in [0, 1]:
-                            for ldamg in [0, 1]:
-                                for ldamcg in [0, 1]:
-                                    if use_instance and class_weight is not None:
-                                        continue
-                                    else:
-                                        pass
-                                    criterion = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-                                    mp_num_list=pm_counts, max_m=max_m, class_weight=class_weight, ldams=ldams, ldamc=ldamc, 
-                                    ldamg=ldamg, ldamcg=ldamcg, use_instance=use_instance, ldam_mul_c_g=mul_c_g)
-                                    c_name = repr(criterion)
-                                    criterions[c_name] = criterion
-
-    criterion_descriptions = {
-        'focal': 'focal loss with effective class ratios', 
-        'adjdice': 'self adjusted dice implementation might have bugs'
+    criterion2 = SelfAdjDiceLoss()
+    criterion3 = F.cross_entropy 
+    criterion4 = CrossEntropyWithInstanceWeights() #iw
+    criterion5 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=30) #ldam
+    criterion6 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=30) #ldam cw
+    criterion7 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=0, 
+    ldamg=0, ldamcg=0, use_instance=True, ldam_mul_c_g=False) #ldamiw
+    criterion8 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    
+    criterions = {
+        'focal':criterion1, 
+        'adjdice':criterion2, 
+        'CE': criterion3,
+        'iw':criterion4, 
+        'ldam':criterion5, 
+        'ldamcw':criterion6, 
+        'ldamiw':criterion7,
+        'ldamreg':criterion8
         }
+
     for c_name, criterion in criterions.items():
         set_seed(0)
-        logging.info(f"loss: {c_name}: {criterion_descriptions.get(c_name, 'no description')}")
+        logging.info(f"loss: {c_name}")
         results[option][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
         normed_linear = True if 'ldam' in c_name.lower() else False

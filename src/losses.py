@@ -12,6 +12,15 @@ self adjusted dice loss taken from https://github.com/fursovia/self-adj-dice/ ba
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
+def fair_reg(preds, Xp):
+    Xp = Xp.unsqueeze(1)
+    Xp = Xp.type(torch.FloatTensor).to(device)
+    Xp = torch.cat((Xp, 1-Xp), dim=1)
+    viol = preds.mean()-(preds@Xp)/torch.max(Xp.sum(axis=0), torch.ones(Xp.shape[1]).to(device)*1e-5)
+    return (viol**2).mean()
+
+
 def focal_loss(input_values, gamma):
     """Computes the focal loss"""
     p = torch.exp(-input_values)
@@ -75,61 +84,10 @@ class LDAMLoss(nn.Module):
         output = torch.where(index, x_m, x)
         return F.cross_entropy(self.s*output, target, weight=self.weight)
 
-class GLDAMLoss(nn.Module):
-    
-    def __init__(self, cls_num_list, clsp_num_list, max_m=0.5, weight=None, s=30, g=0.5):
-        '''
-        cls_num_list: the number of instances in each class, a list of numbers where cls_num_list[0] is the number of instances in class 0
-        clsp_num_list: the number of instances in each group
-        weight: a vector weight of each class (can be different from |C_i| / sum(|C_j|)) as in  Class-balanced loss based on effective
-        number of samples implemented in RW in LDAM-DRW where weights are:
-            beta = 0.9999
-            effective_num = 1.0 - np.power(beta, cls_num_list)
-            per_cls_weights = (1.0 - beta) / np.array(effective_num)
-            per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
-            per_cls_weights = torch.FloatTensor(per_cls_weights).cuda(args.gpu)
-            note: for ldam loss the last layer of the model should NOT be nn.Linear, it should be nn.NormedLinear
-        '''
-        super(GLDAMLoss, self).__init__()
-        m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
-        m_list = m_list * (max_m / np.max(m_list))
-        m_list = torch.FloatTensor(m_list).to(device)
-
-        #do the same for groups or protected labels
-        g_list = 1.0 / np.sqrt(np.sqrt(clsp_num_list))
-        g_list = g_list * (max_m / np.max(g_list))
-        g_list = torch.FloatTensor(g_list).to(device)
-        self.g_list = g_list
-        self.m_list = m_list
-        assert s > 0
-        assert 0 <= g <= 1
-        self.g = g
-        self.s = s
-        self.weight = weight
-
-    def forward(self, x, target, group):
-        index = torch.zeros_like(x, dtype=torch.uint8).to(device)
-        index.scatter_(1, target.data.view(-1, 1), 1)
-        index_float = index.type(torch.FloatTensor).to(device)
-        batch_m = torch.matmul(self.m_list[None, :], index_float.transpose(0,1))
-        batch_m = batch_m.view((-1, 1))
-
-        #do the same for groups
-        gindex = torch.zeros(x.shape[0], self.g_list.shape[0],  dtype=torch.uint8).to(device)
-        gindex.scatter_(1, group.data.view(-1, 1), 1)
-        gindex_float = gindex.type(torch.FloatTensor).to(device)
-        #the following line makes batch_g a vector
-        batch_g = torch.matmul(self.g_list[None, :], gindex_float.transpose(0,1))
-        batch_g = batch_g.view((-1, 1))
-        
-        x_m = x - (1.0 - self.g) * batch_m - self.g * batch_g
-    
-        output = torch.where(index, x_m, x)
-        return F.cross_entropy(self.s*output, target, weight=self.weight)
 
 class GeneralLDAMLoss(nn.Module):
     
-    def __init__(self, cls_num_list, clsp_num_list, mp_num_list, max_m=0.5, class_weight=None, ldams=30, ldamc=0.5, ldamg=0.5, ldamcg=0.5, use_instance=False, ldam_mul_c_g=False):
+    def __init__(self, cls_num_list, clsp_num_list, mp_num_list, max_m=0.5, class_weight=None, ldams=30, ldamc=0.5, ldamg=0.5, ldamcg=0.5, use_instance=False, ldam_mul_c_g=False, rho=0.0):
         '''
         cls_num_list: the number of instances in each class, a list of numbers where cls_num_list[0] is the number of instances in class 0
         clsp_num_list: the number of instances in each group
@@ -187,6 +145,7 @@ class GeneralLDAMLoss(nn.Module):
         self.class_weight = class_weight
         self.ldam_mul_c_g = ldam_mul_c_g
         self.ce_instance = CrossEntropyWithInstanceWeights(class_weights=self.class_weight)
+        self.rho = rho
 
     def __repr__(self):
         name = ['ldam']
@@ -226,52 +185,25 @@ class GeneralLDAMLoss(nn.Module):
         batch_mg = torch.matmul(self.mg_list[None, :], mgindex_float.transpose(0,1))
         batch_mg = batch_mg.view((-1, 1))
 
+
+
         if self.ldam_mul_c_g:
             x_m = x - batch_m * batch_g
         else:
             x_m = x - self.ldamc * batch_m - self.ldamg * batch_g - self.ldamcg * batch_mg
     
         output = torch.where(index, x_m, x)
+        regloss = 0
+        if self.rho:
+            for tval in range(self.m_list.shape[0]):
+                reg = fair_reg(F.softmax(x[target==tval], dim=1)[:,tval], group[target==tval])
+                regloss += reg
+
         if self.use_instance:
-            return self.ce_instance(self.ldams * output, target, instance_weights=instance_weights)
+            return self.ce_instance(self.ldams * output, target, instance_weights=instance_weights) + self.rho * regloss
         else:
-            return F.cross_entropy(self.ldams * output, target, weight=self.class_weight)
+            return F.cross_entropy(self.ldams * output, target, weight=self.class_weight) + self.rho * regloss
 
-class LDAMLossInstanceWeight(nn.Module):
-    
-    def __init__(self, cls_num_list, max_m=0.5, weight=None, s=30):
-        '''
-        cls_num_list: the number of instances in each class, a list of numbers where cls_num_list[0] is the number of instances in class 0
-        weight: a vector weight of each class (can be different from |C_i| / sum(|C_j|)) as in  Class-balanced loss based on effective
-        number of samples implemented in RW in LDAM-DRW where weights are:
-            beta = 0.9999
-            effective_num = 1.0 - np.power(beta, cls_num_list)
-            per_cls_weights = (1.0 - beta) / np.array(effective_num)
-            per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(cls_num_list)
-            per_cls_weights = torch.FloatTensor(per_cls_weights).cuda(args.gpu)
-            note: for ldam loss the last layer of the model should NOT be nn.Linear, it should be nn.NormedLinear
-        '''
-        super(LDAMLossInstanceWeight, self).__init__()
-        m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
-        m_list = m_list * (max_m / np.max(m_list))
-        m_list = torch.FloatTensor(m_list).to(device)
-        self.m_list = m_list
-        assert s > 0
-        self.s = s
-        self.weight = weight
-        self.ce_instance = CrossEntropyWithInstanceWeights(class_weights=weight)
-
-    def forward(self, x, target, instance_weights):
-        index = torch.zeros_like(x, dtype=torch.uint8).to(device)
-        index.scatter_(1, target.data.view(-1, 1), 1)
-        
-        index_float = index.type(torch.FloatTensor).to(device)
-        batch_m = torch.matmul(self.m_list[None, :], index_float.transpose(0,1))
-        batch_m = batch_m.view((-1, 1))
-        x_m = x - batch_m
-    
-        output = torch.where(index, x_m, x)
-        return self.ce_instance(self.s*output, target, instance_weights=instance_weights)
 
 
 
@@ -335,6 +267,7 @@ class CrossEntropyWithInstanceWeights(nn.Module):
             return corss_ent_loss
         else:
             raise NotImplementedError(f"Reduction `{self.reduction}` is not supported.")
+
 
 
 if __name__ == '__main__':
