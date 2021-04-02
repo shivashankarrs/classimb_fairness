@@ -28,6 +28,31 @@ np.random.seed(1)
 
 LAMBDA_REVERSAL_STRENGTH = 1
 
+import pdb
+def ldamloss(cls_num_list=[100, 1], max_m=0.5, weight=None, s=30):
+
+    def lossFunction(y_true, y_pred):    
+        num_class = len(cls_num_list)
+        m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
+        m_list = m_list * (max_m / np.max(m_list))
+        m_list = tf.convert_to_tensor(m_list, dtype=tf.float32)
+        index = tf.one_hot(y_true, depth=num_class, on_value=1, off_value=0, dtype=tf.dtypes.int32)
+        index_float = tf.cast(index, dtype=tf.dtypes.float32)
+        index_bool = tf.cast(index, dtype=tf.dtypes.bool)
+        m_list = tf.reshape(m_list, (num_class, 1))
+        batch_m = tf.matmul(index_float, m_list)
+        x_m = x - batch_m
+        output = tf.where(index_bool, x_m, x)
+        if weight is not None:
+            sample_weights = tf.gather(weights, y_true)
+        else:
+            sample_weights = None
+        cce = tf.keras.losses.CategoricalCrossentropy()
+        pdb.set_trace()
+        return cce(index, output * s, sample_weight=sample_weights)
+
+    return lossFunction
+    
 def regularized_model(protected_labels):
     def lossFunction(y_true, y_pred):
         y_true = tf.cast(y_true, 'float32')
@@ -106,12 +131,16 @@ class GradientReversal(Layer):
 
 def build_dnn(trainX, trainy, train_priv, validX, validy, valid_priv, hidden_size=300, input_dim=2304, epochs=10, patience=3):
 
+    unique, counts = np.unique(trainy, return_counts=True)
+    cls_num_list = counts.tolist()
+    
     text_input = Input(
         shape=(input_dim,), dtype='float32', name='input'
     )
     embeds = Dense(
         hidden_size, activation='relu'
     )(text_input) 
+
     predicts = Dense(
         1, activation='sigmoid', name='predict'
     )(embeds) 
@@ -129,7 +158,10 @@ def build_dnn(trainX, trainy, train_priv, validX, validy, valid_priv, hidden_siz
     metrics_dict = {}
 
     for l in layer_names: 
-        loss_dict[l] = 'binary_crossentropy'
+        if l == 'predict':
+            loss_dict[l] = ldamloss(cls_num_list=cls_num_list)
+        else: 
+            loss_dict[l] = 'binary_crossentropy'
         metrics_dict[l] = 'accuracy'
     
     model.compile(
@@ -137,8 +169,9 @@ def build_dnn(trainX, trainy, train_priv, validX, validy, valid_priv, hidden_siz
         metrics=metrics_dict, loss_weights = [1, 1]
     )
     print(model.summary())
-    mc = ModelCheckpoint('adv_best_model.h5', monitor='val_accuracy', mode='max', verbose=1, save_best_only=True)
-    history = model.fit(trainX, [trainy, train_priv], validation_data=(validX, [validy, valid_priv]), epochs=epochs, verbose=0, callbacks=[mc], batch_size=32)
+    #mc = ModelCheckpoint('adv_best_model.h5', monitor='val_accuracy', mode='max', verbose=1, save_best_only=True)
+    #history = model.fit(trainX, [trainy, train_priv], validation_data=(validX, [validy, valid_priv]), epochs=epochs, verbose=0, callbacks=[mc], batch_size=32)
+    history = model.fit(trainX, [trainy, train_priv], validation_data=(validX, [validy, valid_priv]), epochs=epochs, verbose=0, batch_size=32)
     return model
     
 
@@ -177,9 +210,9 @@ if __name__ == '__main__':
     x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
     x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
-    advmodel = build_reg_dnn(x_train, y_m_train, y_p_train, x_dev, y_m_dev, y_p_dev, hidden_size=300, input_dim=2304, epochs=10, patience=1)
-    saved_model = load_model('adv_best_model.h5')
-    y_test_pred = saved_model.predict(x_test)
+    advmodel = build_dnn(x_train, y_m_train, y_p_train, x_dev, y_m_dev, y_p_dev, hidden_size=300, input_dim=2304, epochs=200, patience=10)
+    #saved_model = load_model('adv_best_model.h5')
+    y_test_pred = advmodel.predict(x_test)
     f1 = f1_score(y_m_test, y_test_pred, average='macro')
     _, biased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
     print ("tpr:", rms(list(biased_diffs.values())), "f1:",  f1)
