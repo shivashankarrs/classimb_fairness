@@ -117,7 +117,7 @@ def run_all_losses_biasbios():
     DO_RANDOM = True
     DO_TUNE_LDAM = False
     DO_TUNE_FOCAL = False
-    SAVE_CROSSENTROPY_300D = True
+    SAVE_CROSSENTROPY_300D = False
     
     logging.info('loading train dev test sets...')
     train_data = load_data_biasbios("/lt/work/shiva/class_imbalance/datasets/biography/train.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/train_cls.npy")
@@ -251,11 +251,10 @@ def run_all_losses(option='original', class_balance=0.5):
     #results[dataset_option][model][measure] = value
     DO_SVM = False
     DO_RANDOM = True
-    SAVE_CROSSENTROPY_300D = True
+    SAVE_CROSSENTROPY_300D = False
     #uses clustering membership instead of y_p_train
     DO_CLUSTERING = False
-    UPSAMPLE = True
-
+    
     logging.info('loading train dev test sets...')
     train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option, class_balance=class_balance)
     dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option, class_balance=class_balance)
@@ -266,27 +265,6 @@ def run_all_losses(option='original', class_balance=0.5):
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
 
     logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
-
-    if UPSAMPLE:
-        trlabels = train_data['labels']
-        subsel = trlabels==0
-        sublabels = trlabels[subsel]
-        subfeature = train_data['feature'][subsel]
-        sub_pro_feature = train_data['protected_attribute'][subsel]
-        class_pos = np.sum(train_data['labels'])
-        class_neg = len(trlabels) - class_pos
-        resampled_feature, resampled_labels, resampled_protected = upsample(subfeature, sublabels, sub_pro_feature, abs(class_pos-class_neg))
-
-        print (train_data['feature'].shape, resampled_feature.shape)
-        x_aug_train = np.concatenate((train_data['feature'], resampled_feature), axis=0)
-        x_aug_p_train = np.concatenate((train_data['protected_attribute'], resampled_protected), axis=0)
-        x_aug_m_train = np.concatenate((train_data['labels'], resampled_labels), axis=0)
-        print ("UPSAMPLE", class_pos, class_neg, x_train.shape, y_p_train.shape, y_m_train.shape, class_pos, class_neg, resampled_feature.shape, resampled_labels.shape, resampled_protected.shape)    
-        print (x_aug_train.shape, x_aug_p_train.shape, x_aug_m_train.shape)
-        
-        from collections import Counter
-        print (Counter(x_aug_m_train))
-
 
     if DO_CLUSTERING:
         n_clusters = (np.max(y_p_train) + 1) * (np.max(y_m_train) + 1)
@@ -361,7 +339,7 @@ def run_all_losses(option='original', class_balance=0.5):
         instance_weights[i] = per_instance_weights[pm_counts_id[all_mps[i]]]
         y_mp_train[i] = pm_counts_id[all_mps[i]]
 
-    ldams = 30
+    ldams = 1
     criterion1 = FocalLoss(weight=per_cls_weights, gamma=1)
     criterion2 = SelfAdjDiceLoss()
     criterion3 = F.cross_entropy 
@@ -370,6 +348,9 @@ def run_all_losses(option='original', class_balance=0.5):
     criterion6 = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=30) #ldam cw
     criterion7 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
     mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=0, 
+    ldamg=0, ldamcg=0, use_instance=True, ldam_mul_c_g=False) #ldamiw
+    criterion71 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=1, 
     ldamg=0, ldamcg=0, use_instance=True, ldam_mul_c_g=False) #ldamiw
     criterion8 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
     mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams, ldamc=1, 
@@ -383,6 +364,7 @@ def run_all_losses(option='original', class_balance=0.5):
         'ldam':criterion5, 
         'ldamcw':criterion6, 
         'ldamiw':criterion7,
+        'ldamiw-ldamc=1':criterion71,
         'ldamreg':criterion8
         }
 
@@ -434,7 +416,7 @@ def run_all_losses(option='original', class_balance=0.5):
 def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_ldams=1.csv"))
 
 def pretty_print_biography(results, output_csv_dir='./'):
     for option, res in results.items():
@@ -446,16 +428,19 @@ if __name__ == "__main__":
     print(f"using device {device}")
     all_results = defaultdict(dict)
     all_results.update(run_all_losses(option='original'))
-    all_results['original']['inlp'] = {'f1':0.748, 'tpr': 0.128}
+    #all_results['original']['inlp'] = {'f1':0.748, 'tpr': 0.128}
     pretty_print(all_results)
     all_results = defaultdict(dict)
-    inlp_results = defaultdict(dict)
-    inlp_results['inlp0.5'][0.9] = {'f1':0.639, 'tpr': 0.070}
-    inlp_results['inlp0.7'][0.9] = {'f1':0.683, 'tpr': 0.119}
-    inlp_results['inlp0.9'][0.9] = {'f1':0.705, 'tpr': 0.261}
-    for cb in [0.9]:
-        for option in ['inlp0.5', 'inlp0.7', 'inlp0.9']:
-            all_results.update(run_all_losses(option=option, class_balance=cb))
-            all_results[option]['inlp'] = inlp_results[option][cb]
-        pretty_print(all_results, class_balance=cb)
-        all_results = defaultdict(dict)
+    
+    #inlp_results = defaultdict(dict)
+    #inlp_results['inlp0.5'][0.9] = {'f1':0.639, 'tpr': 0.070}
+    #inlp_results['inlp0.7'][0.9] = {'f1':0.683, 'tpr': 0.119}
+    #inlp_results['inlp0.9'][0.9] = {'f1':0.705, 'tpr': 0.261}
+    cb = [0.9, 0.95]
+    option = ['inlp0.9', 'inlp0.95']
+
+    for _i in range(len(cb)):
+        all_results.update(run_all_losses(option=option[_i], class_balance=cb[_i]))
+        #all_results[option]['inlp'] = inlp_results[option][cb]
+    pretty_print(all_results, class_balance=cb)
+    all_results = defaultdict(dict)
