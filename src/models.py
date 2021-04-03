@@ -11,6 +11,7 @@ import logging
 import losses
 import pdb
 from copy import deepcopy
+from functions import ReverseLayerF
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -53,6 +54,70 @@ class MLP(nn.Module):
         x_var = torch.tanh(self.fc1(x_var))
         return x_var.detach().cpu().numpy()
 
+    def fit(self, X_train, y_train, y_p_train, y_mp_train, X_val, y_val, optimizer, instance_weights=None, n_iter=100, batch_size=100, max_patience=10):
+        X_val_tensor, y_val_tensor = variable(torch.FloatTensor(X_val)), y_val
+        train_dataset = ImbDataset(X_train, y_train, y_p_train, y_mp_train, instance_weights)
+        train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        best_score = -1
+        best_state_dict = self.state_dict()
+        patience = 0
+        init_lr = optimizer.defaults['lr']
+        #delayed reweighting DRW start after epoch delayed_epoch, don't delay if delayed_epoch = -1
+        class_weight = None
+        delayed_epoch = -1
+        if hasattr(self.criterion, 'class_weight'):
+            class_weight = deepcopy(self.criterion.class_weight)
+            self.criterion.class_weight = None
+        for i in range(n_iter):
+            #for use with sgd
+            #adjust_learning_rate(optimizer, i, init_lr)
+            if i > delayed_epoch and class_weight is not None:
+                self.criterion.class_weight = class_weight
+            self.train()
+            train_loss = train_epoch(self, optimizer, train_data_loader, self.criterion)            
+            val_score = self.score(X_val_tensor, y_val_tensor)
+            logging.debug(f"iter {i} train loss {train_loss:.2f} val f1:{val_score:.2f}")
+            if val_score > best_score:
+                best_state_dict = self.state_dict()
+                best_score = val_score
+                patience = 0
+            else:
+                patience += 1
+                if patience > max_patience:
+                    break
+        self.load_state_dict(best_state_dict)
+
+class MLP_adv(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, domain_output_size, normed_linear=False, criterion=F.cross_entropy):
+        super(MLP, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = NormedLinear(hidden_size, output_size) if normed_linear else nn.Linear(hidden_size, output_size) 
+        self.fc3 = NormedLinear(hidden_size, domain_output_size) if normed_linear else nn.Linear(hidden_size, domain_output_size) 
+        self.criterion = criterion
+        self.rho = 1 
+    def forward(self, x, alpha=1):
+        x = torch.tanh(self.fc1(x))
+        class_output = self.fc2(x)
+        rev_x = ReverseLayerF.apply(x, alpha)
+        domain_output = self.fc3(rev_x)
+        return class_output, domain_output
+    def predict(self, x):
+        if not isinstance(x, Variable):
+            X_tensor = variable(torch.FloatTensor(x))
+        else:
+            X_tensor = x
+        class_output, _ = self.forward(X_tensor)
+        y_pred = F.softmax(class_output, dim=1).max(dim=1)[1]
+        y_pred = y_pred.detach().cpu().numpy()
+        return y_pred
+    def score(self, x, y_true, metric='f1'):
+        #metric can be 'f1' (macro f1) or acc (accuracy)
+        if metric == 'f1':
+            return f1_score(y_true, self.predict(x), average='macro')
+        elif metric == 'acc':
+        #accuracy
+            return accuracy_score(y_true, self.predict(x))
+    
     def fit(self, X_train, y_train, y_p_train, y_mp_train, X_val, y_val, optimizer, instance_weights=None, n_iter=100, batch_size=100, max_patience=10):
         X_val_tensor, y_val_tensor = variable(torch.FloatTensor(X_val)), y_val
         train_dataset = ImbDataset(X_train, y_train, y_p_train, y_mp_train, instance_weights)
