@@ -13,7 +13,7 @@ import sys
 import os
 import torch
 from losses import *
-from models import MLP, variable
+from models import MLP, variable, MLP_adv
 import pickle
 import logging
 import random
@@ -357,15 +357,15 @@ def run_all_losses(option='original', class_balance=0.5):
     ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
     
     criterions = {
-        'focal':criterion1, 
-        'adjdice':criterion2, 
-        'CE': criterion3,
-        'iw':criterion4, 
+        #'focal':criterion1, 
+        #'adjdice':criterion2, 
+        #'CE': criterion3,
+        #'iw':criterion4, 
         'ldam':criterion5, 
         'ldamcw':criterion6, 
-        'ldamiw':criterion7,
-        'ldamiw-ldamc=1':criterion71,
-        'ldamreg':criterion8
+        #'ldamiw':criterion7,
+        #'ldamiw-ldamc=1':criterion71,
+        #'ldamreg':criterion8
         }
 
     for c_name, criterion in criterions.items():
@@ -410,6 +410,19 @@ def run_all_losses(option='original', class_balance=0.5):
         group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
         results[option][c_name].update(group_results)
 
+    advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=criterion6, criterion2=F.cross_entropy, lambda_adv=2)
+    advmodel.to(device)
+    optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
+    advmodel.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
+    f1 = advmodel.score(x_test, y_m_test)
+    y_test_pred = advmodel.predict(x_test)
+    _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
+
+    results[option]["adv"] = {}
+    results[option]["adv"].update({"f1": f1})
+    results[option]["adv"].update({"tpr": rms(list(debiased_diffs.values()))})
+    group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+    results[option]["adv"].update(group_results)
     return results    
 
 

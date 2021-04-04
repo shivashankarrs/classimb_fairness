@@ -88,12 +88,14 @@ class MLP(nn.Module):
         self.load_state_dict(best_state_dict)
 
 class MLP_adv(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, domain_output_size, normed_linear=False, criterion=F.cross_entropy):
-        super(MLP, self).__init__()
+    def __init__(self, input_size, hidden_size, output_size, domain_output_size, normed_linear=False, criterion1=F.cross_entropy, criterion2=F.cross_entropy, lambda_adv=1):
+        super(MLP_adv, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = NormedLinear(hidden_size, output_size) if normed_linear else nn.Linear(hidden_size, output_size) 
         self.fc3 = NormedLinear(hidden_size, domain_output_size) if normed_linear else nn.Linear(hidden_size, domain_output_size) 
-        self.criterion = criterion
+        self.criterion1 = criterion1
+        self.criterion2 = criterion2
+        self.lambda_adv = lambda_adv
         self.rho = 1 
     def forward(self, x, alpha=1):
         x = torch.tanh(self.fc1(x))
@@ -129,16 +131,16 @@ class MLP_adv(nn.Module):
         #delayed reweighting DRW start after epoch delayed_epoch, don't delay if delayed_epoch = -1
         class_weight = None
         delayed_epoch = -1
-        if hasattr(self.criterion, 'class_weight'):
-            class_weight = deepcopy(self.criterion.class_weight)
-            self.criterion.class_weight = None
+        if hasattr(self.criterion1, 'class_weight'):
+            class_weight = deepcopy(self.criterion1.class_weight)
+            self.criterion1.class_weight = None
         for i in range(n_iter):
             #for use with sgd
             #adjust_learning_rate(optimizer, i, init_lr)
             if i > delayed_epoch and class_weight is not None:
-                self.criterion.class_weight = class_weight
+                self.criterion1.class_weight = class_weight
             self.train()
-            train_loss = train_epoch(self, optimizer, train_data_loader, self.criterion)            
+            train_loss = train_epoch_adv(self, optimizer, train_data_loader, self.criterion1, self.criterion2, self.lambda_adv)            
             val_score = self.score(X_val_tensor, y_val_tensor)
             logging.debug(f"iter {i} train loss {train_loss:.2f} val f1:{val_score:.2f}")
             if val_score > best_score:
@@ -189,6 +191,28 @@ def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.uti
         else:
             loss = criterion(output, target)
         epoch_loss += loss.data
+        loss.backward()
+        optimizer.step()
+    return epoch_loss / len(data_loader)
+
+def train_epoch_adv(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion1=F.cross_entropy, criterion2=F.cross_entropy, lambda_adv=1):
+    model.train()
+    epoch_loss = 0
+    for input, target, group, targetgroup, instance_weights in data_loader:
+        input, target, group, targetgroup = variable(input), variable(target), variable(group), variable(targetgroup)
+        optimizer.zero_grad()
+        output, groupout = model(input)
+
+        if isinstance(criterion1, losses.CrossEntropyWithInstanceWeights):
+            loss = criterion1(output, target, instance_weights)
+        elif isinstance(criterion1, losses.GeneralLDAMLoss):
+            loss = criterion1(output, target, group, targetgroup, instance_weights)
+        else:
+            loss = criterion1(output, target)
+
+        loss2 = criterion2(groupout, group)
+        epoch_loss += loss.data
+        epoch_loss += lambda_adv * loss2.data
         loss.backward()
         optimizer.step()
     return epoch_loss / len(data_loader)
