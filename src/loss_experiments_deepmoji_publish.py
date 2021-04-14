@@ -229,9 +229,9 @@ def run_all_losses(option='original', class_balance=0.5):
         results[option][c_name].update(group_results)
 
     for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
-        adv_ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
         for adv_val in [0.01, 0.1, 0.5, 1, 3, 5, 10, 20, 30, 50, 70, 100]:
             set_seed(SEED)
+            adv_ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
             advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, lambda_adv=adv_val)
             advmodel.to(device)
             optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
@@ -244,7 +244,8 @@ def run_all_losses(option='original', class_balance=0.5):
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": rms(list(debiased_diffs.values()))})
             group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
             results[option]["adv_{}_{}".format(_s, adv_val)].update(group_results)
-        return results    
+    
+    return results    
 
 def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
     for option, res in results.items():
