@@ -211,7 +211,7 @@ def run_all_losses(option='original', class_balance=0.5):
             
             criterions['criteria_ldam_ldamreg_{}_{}'.format(_s, _rho)] = ldamreg
         
-    for c_name, criterion in criterions.items():
+    """for c_name, criterion in criterions.items():
         set_seed(SEED)
         logging.info(f"loss: {c_name}")
         results[option][c_name] = {}
@@ -226,31 +226,38 @@ def run_all_losses(option='original', class_balance=0.5):
         results[option][c_name].update({"f1": f1})
         results[option][c_name].update({"tpr": rms(list(debiased_diffs.values()))})
         group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
-        results[option][c_name].update(group_results)
+        results[option][c_name].update(group_results)"""
 
     for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
         for adv_val in [0.01, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50, 70, 90, 100]:
+            logging.info(f"adv: {_s}_{adv_val}")
+            normed_linear = True
             set_seed(SEED)
             adv_ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
-            advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, lambda_adv=adv_val)
+            #advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val)
+            advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val, rev_tech=0)
             advmodel.to(device)
             optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
-            advmodel.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
+            advmodel.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=100, batch_size=128, max_patience=10)
             f1 = advmodel.score(x_test, y_m_test)
             y_test_pred = advmodel.predict(x_test)
             _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
+            _tpr_val  = rms(list(debiased_diffs.values()))
             results[option]["adv_{}_{}".format(_s, adv_val)] = {}
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"f1": f1})
-            results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": rms(list(debiased_diffs.values()))})
+            results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": _tpr_val})
             group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
             results[option]["adv_{}_{}".format(_s, adv_val)].update(group_results)
+            
+            logging.info(f"f1: {f1}")
+            logging.info(f"tpr: {_tpr_val}")
     
     return results    
 
 def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_apr14_adv_seed{SEED}.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_apr15_adv_newgradrev_alpha_seed{SEED}.csv"))
 
 if __name__ == "__main__":
 
