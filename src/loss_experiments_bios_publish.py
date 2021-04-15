@@ -111,20 +111,18 @@ def get_TPR(y_main, y_hat_main, y_protected):
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr)))
 
-def run_all_losses(option='original', class_balance=0.5):
+def run_all_losses_biasbios(option='original', class_balance=0.5):
     results = defaultdict(dict)
     DO_RANDOM = True
     SAVE_CROSSENTROPY_300D = False
     
     logging.info('loading train dev test sets...')
-    train_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train', option=option, class_balance=class_balance)
-    dev_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/dev', option=option, class_balance=class_balance)
-    test_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/test', option=option, class_balance=class_balance)
-
+    train_data = load_data_biasbios("/lt/work/shiva/class_imbalance/datasets/biography/train.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/train_cls.npy")
+    dev_data = load_data_biasbios("/lt/work/shiva/class_imbalance/datasets/biography/dev.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/dev_cls.npy")
+    test_data = load_data_biasbios("/lt/work/shiva/class_imbalance/datasets/biography/test.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/test_cls.npy")
     x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
     x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
-
     logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
 
     if DO_RANDOM:
@@ -135,8 +133,8 @@ def run_all_losses(option='original', class_balance=0.5):
         _, biased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
         results[option]['rand'] = {"tpr": rms(list(biased_diffs.values()))}
         results[option]['rand'].update({"f1": f1})
-        group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
-        results[option]['rand'].update(group_results)
+        #group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+        #results[option]['rand'].update(group_results)
 
     unique, counts = np.unique(y_m_train, return_counts=True)
     cls_num_list = counts.tolist()
@@ -225,10 +223,10 @@ def run_all_losses(option='original', class_balance=0.5):
         _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
         results[option][c_name].update({"f1": f1})
         results[option][c_name].update({"tpr": rms(list(debiased_diffs.values()))})
-        group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
-        results[option][c_name].update(group_results)
+        #group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+        #results[option][c_name].update(group_results)
 
-    for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
+    """for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
         for adv_val in [0.01, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50, 70, 90, 100]:
             set_seed(SEED)
             adv_ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
@@ -242,20 +240,20 @@ def run_all_losses(option='original', class_balance=0.5):
             results[option]["adv_{}_{}".format(_s, adv_val)] = {}
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"f1": f1})
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": rms(list(debiased_diffs.values()))})
-            group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
-            results[option]["adv_{}_{}".format(_s, adv_val)].update(group_results)
-    
+            #group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+            #results[option]["adv_{}_{}".format(_s, adv_val)].update(group_results)"""
+
     return results    
 
-def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
+def pretty_print_biography(results, output_csv_dir='./'):
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_apr14_adv_seed{SEED}.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"_{option}_biography_results_apr15_seed{SEED}.csv"))
 
 if __name__ == "__main__":
 
     #datasets_to_run = ['deepmoji', 'biography']
-    datasets_to_run = ['deepmoji']
+    datasets_to_run = ['biography']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"using device {device}")
 
