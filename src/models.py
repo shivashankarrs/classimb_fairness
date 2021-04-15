@@ -12,6 +12,7 @@ import losses
 import pdb
 from copy import deepcopy
 from functions import ReverseLayerF
+from reversal import GradientReversal
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -88,19 +89,26 @@ class MLP(nn.Module):
         self.load_state_dict(best_state_dict)
 
 class MLP_adv(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, domain_output_size, normed_linear=False, criterion1=F.cross_entropy, criterion2=F.cross_entropy, lambda_adv=1):
+    def __init__(self, input_size, hidden_size, output_size, domain_output_size, normed_linear=False, criterion1=F.cross_entropy, criterion2=F.cross_entropy, lambda_adv=1, alpha = 1, rev_tech = 1):
         super(MLP_adv, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = NormedLinear(hidden_size, output_size) if normed_linear else nn.Linear(hidden_size, output_size) 
-        self.fc3 = NormedLinear(hidden_size, domain_output_size) if normed_linear else nn.Linear(hidden_size, domain_output_size) 
+        #self.fc3 = NormedLinear(hidden_size, domain_output_size) if normed_linear else nn.Linear(hidden_size, domain_output_size) 
+        self.fc3 = nn.Linear(hidden_size, domain_output_size) 
         self.criterion1 = criterion1
         self.criterion2 = criterion2
         self.lambda_adv = lambda_adv
         self.rho = 1 
+        self.alpha = alpha
+        self.grad_rev = GradientReversal(alpha)
+        self.rev_tech = rev_tech
     def forward(self, x, alpha=1):
         x = torch.tanh(self.fc1(x))
         class_output = self.fc2(x)
-        rev_x = ReverseLayerF.apply(x, alpha)
+        if self.rev_tech == 1: 
+            rev_x = ReverseLayerF.apply(x, self.alpha)
+        else: 
+            rev_x = self.grad_rev(x)
         domain_output = self.fc3(rev_x)
         return class_output, domain_output
     def predict(self, x):
