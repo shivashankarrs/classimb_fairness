@@ -20,6 +20,7 @@ import random
 import pandas as pd
 import pdb
 import sys
+import torch.nn as nn
 sys.path.append('../')
 
 from data.process_data import load_data_deepmoji, upsample, load_data_biasbios
@@ -113,8 +114,10 @@ def rms(arr):
 
 def run_all_losses(option='original', class_balance=0.5):
     results = defaultdict(dict)
+    dev_results = defaultdict(dict)
+
     DO_RANDOM = True
-    SAVE_CROSSENTROPY_300D = False
+    SAVE_CROSSENTROPY_300D = True
     
     logging.info('loading train dev test sets...')
     train_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train', option=option, class_balance=class_balance)
@@ -183,7 +186,7 @@ def run_all_losses(option='original', class_balance=0.5):
     criterion2 = SelfAdjDiceLoss()
     criterion3 = F.cross_entropy 
     criterion4 = CrossEntropyWithInstanceWeights() #iw
-    criterion5 = CrossEntropyWithInstanceWeights(class_weights=per_cls_weights) #cw
+    criterion5 = nn.CrossEntropyLoss(weight=per_cls_weights) #cw
     criterions = {
         'focal':criterion1, 
         'adjdice':criterion2, 
@@ -191,8 +194,12 @@ def run_all_losses(option='original', class_balance=0.5):
         'iw':criterion4, 
         'cw':criterion5
     }
-    
-    for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
+
+    '''srange = [0.01, 0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 15, 17, 20, 23, 25, 28, 30]
+    rho_range = [0.0001, 0.01, 0.1, 0.3, 0.5, 0.7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 95, 100]
+    lambda_range = [0.0001, 0.01, 0.1, 0.3, 0.5, 0.7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 95, 100]
+
+    for _s in srange:
         ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
         ldamcwcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=_s) #ldam cw
         
@@ -204,41 +211,70 @@ def run_all_losses(option='original', class_balance=0.5):
         criterions['criteria_ldam_cw_{}'.format(_s)] = ldamcwcriterion
         criterions['criteria_ldam_ldamiw_{}'.format(_s)] = ldamiw
         
-        for _rho in [0.01, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50, 70, 90, 100]:
+        for _rho in rho_range:
             ldamreg = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
                     mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=_s, ldamc=1, 
                     ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=_rho)
             
-            criterions['criteria_ldam_ldamreg_{}_{}'.format(_s, _rho)] = ldamreg
+            criterions['criteria_ldam_ldamreg_{}_{}'.format(_s, _rho)] = ldamreg'''
         
-    """for c_name, criterion in criterions.items():
+    for c_name, criterion in criterions.items():
         set_seed(SEED)
         logging.info(f"loss: {c_name}")
+
         results[option][c_name] = {}
+        dev_results[option][c_name] = {}
+
         normed_linear = True if 'ldam' in c_name.lower() else False
         model = MLP(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, normed_linear=normed_linear, criterion=criterion)
         model.to(device)
         optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
-        model.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
+        model.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=100, batch_size=128, max_patience=10)
+
+        if SAVE_CROSSENTROPY_300D and criterion == criterion3:
+            x_train_repr, x_dev_repr, x_test_repr = model.get_hidden(x_train), model.get_hidden(x_dev), model.get_hidden(x_test)
+            train_data['hidden'] = x_train_repr
+            dev_data['hidden'] = x_dev_repr
+            test_data['hidden'] = x_test_repr
+         
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
+                pickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/dev_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
+                pickle.dump(dev_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/test_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
+                pickle.dump(test_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
         f1 = model.score(x_test, y_m_test)
         y_test_pred = model.predict(x_test)
         _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
         results[option][c_name].update({"f1": f1})
         results[option][c_name].update({"tpr": rms(list(debiased_diffs.values()))})
         group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
-        results[option][c_name].update(group_results)"""
+        results[option][c_name].update(group_results)
 
-    for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
-        for adv_val in [0.01, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50, 70, 90, 100]:
+        dev_f1 = model.score(x_dev, y_m_dev)
+        y_dev_pred = model.predict(x_dev)
+        _, dev_debiased_diffs = get_TPR(y_m_dev, y_dev_pred, y_p_dev)
+        dev_results[option][c_name].update({"f1": dev_f1})
+        dev_results[option][c_name].update({"tpr": rms(list(dev_debiased_diffs.values()))})
+        dev_group_results = group_evaluation(y_dev_pred, y_m_dev, y_p_dev)
+        dev_results[option][c_name].update(dev_group_results)
+
+
+    '''for _s in srange:
+        for adv_val in lambda_range:
             logging.info(f"adv: {_s}_{adv_val}")
             normed_linear = True
             set_seed(SEED)
             adv_ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
             #advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val)
-            advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val, rev_tech=0)
+            advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val, rev_tech=1)
             advmodel.to(device)
             optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
             advmodel.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=100, batch_size=128, max_patience=10)
+
             f1 = advmodel.score(x_test, y_m_test)
             y_test_pred = advmodel.predict(x_test)
             _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
@@ -248,16 +284,29 @@ def run_all_losses(option='original', class_balance=0.5):
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": _tpr_val})
             group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
             results[option]["adv_{}_{}".format(_s, adv_val)].update(group_results)
-            
+
             logging.info(f"f1: {f1}")
             logging.info(f"tpr: {_tpr_val}")
-    
-    return results    
 
-def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
+            dev_f1 = advmodel.score(x_dev, y_m_dev)
+            y_dev_pred = advmodel.predict(x_dev)
+            _, dev_debiased_diffs = get_TPR(y_m_dev, y_dev_pred, y_p_dev)
+            dev_results[option]["adv_{}_{}".format(_s, adv_val)] = {}
+            dev_results[option]["adv_{}_{}".format(_s, adv_val)].update({"f1": dev_f1})
+            dev_results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": rms(list(dev_debiased_diffs.values()))})
+            dev_group_results = group_evaluation(y_dev_pred, y_m_dev, y_p_dev)
+            dev_results[option]["adv_{}_{}".format(_s, adv_val)].update(dev_group_results)'''
+            
+    return results, dev_results
+
+def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5, split = "test"):
+
+    with open(f"{option}_{class_balance}_results_april18_large_{split}_seed_{SEED}.pkl", "wb") as f:
+        pickle.dump(results, f)
+
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_apr15_adv_newgradrev_alpha_seed{SEED}.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_april18_large_{split}_seed_{SEED}.csv"))
 
 if __name__ == "__main__":
 
@@ -268,15 +317,23 @@ if __name__ == "__main__":
 
     for ds in datasets_to_run:
         if ds == 'deepmoji':
-            all_results = defaultdict(dict)
-            all_results.update(run_all_losses(option='original'))
-            pretty_print(all_results)
+            test_results = defaultdict(dict)
+            dev_results = defaultdict(dict)
+            test_run, dev_run = run_all_losses(option='original')
+            test_results.update(test_run)
+            dev_results.update(dev_run)
+            pretty_print(test_results)
+            pretty_print(dev_results, split = "dev")
             cb = [0.9, 0.95]
             option = ['inlp0.9', 'inlp0.95']
             for _i in range(len(cb)):
-                all_results = defaultdict(dict)
-                all_results.update(run_all_losses(option=option[_i], class_balance=cb[_i]))
-                pretty_print(all_results, class_balance=cb[_i])
+                test_results = defaultdict(dict)
+                dev_results = defaultdict(dict)
+                test_run, dev_run = run_all_losses(option=option[_i], class_balance=cb[_i])
+                test_results.update(test_run)
+                dev_results.update(dev_run)
+                #pretty_print(test_results, option=option[_i], class_balance=cb[_i])
+                #pretty_print(dev_results, option=option[_i], class_balance=cb[_i], split = "dev")
         elif ds == "biography":
             all_results = defaultdict(dict)
             all_results.update(run_all_losses_biasbios())

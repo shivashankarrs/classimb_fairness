@@ -59,6 +59,10 @@ def load_data_deepmoji(path, option='original', class_balance=0.5):
         sample_size = get_inlp_sizes(check_data.shape[0], 0.8, 0.2, class_balance)
     elif option=='inlp0.9':
         sample_size = get_inlp_sizes(check_data.shape[0], 0.9, 0.1, class_balance)
+    elif option=='inlp0.95':
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.95, 0.05, class_balance)
+    elif option=='inlp0.99':
+        sample_size = get_inlp_sizes(check_data.shape[0], 0.99, 0.01, class_balance)
         
     print(check_data.shape[0], sample_size)
 
@@ -99,6 +103,24 @@ def load_data_biasbios(path, rpath, xpath):
     dataset = {'feature': np.array(xdata), 'labels': np.array(labels), 'protected_attribute': np.array(protected_attribute)}
     return dataset
 
+def load_data_biasbios_subset(path, rpath, xpath):
+    fdata = load_dataset(path)
+    prof2index = load_dictionary(rpath)
+    xdata = np.load(xpath)
+    labels = []
+    protected_attribute = []
+    xdata_subset = []
+    for indx, data in enumerate(fdata):
+        if data['p'] != 'surgeon' and data['p'] != 'nurse': continue 
+        _protected_feature = 1 if data['g'] == 'f' else 0
+        _label = 1 if data['p'] == 'surgeon' else 0
+        labels.append(_label)
+        protected_attribute.append(_protected_feature)
+        xdata_subset.append(xdata[indx, :])
+    print(np.array(xdata_subset).shape, len(protected_attribute), len(labels))
+    dataset = {'feature': np.array(xdata_subset), 'labels': np.array(labels), 'protected_attribute': np.array(protected_attribute)}
+    return dataset
+
 def load_dataset(path):
     with open(path, "rb") as f:
         data = pickle.load(f)
@@ -110,9 +132,11 @@ def dump_dataset(path, data):
     return 
 
 if __name__ == "__main__":
-    #train_biasbios = load_data_biasbios(DATA_PATH+"biography/test.pickle", "../resources/professions.txt", DATA_PATH+"biography/features/bert_encode_biasbios/test_cls.npy")
-    #print (len(train_biasbios), train_biasbios['feature'].shape, train_biasbios['feature'][0].shape)
-    train_biasbios = load_data_deepmoji(DATA_PATH+"deepmoji/train/", option='inlp0.8', class_balance=0.9)
+    train_biasbios = load_data_biasbios_subset('/lt/work/shiva/class_imbalance/datasets/biography/test.pickle', "../resources/professions.txt", '/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/test_cls.npy')
+    print (len(train_biasbios), train_biasbios['feature'].shape, train_biasbios['feature'][0].shape)
+    print (set(train_biasbios['labels']))
+    
+    '''train_biasbios = load_data_deepmoji(DATA_PATH+"deepmoji/train/", option='inlp0.8', class_balance=0.9)
     from collections import Counter
     print (len(train_biasbios), len(train_biasbios['labels']), train_biasbios['feature'].shape)
-    print (Counter(train_biasbios['labels']), Counter(train_biasbios['protected_attribute']))
+    print (Counter(train_biasbios['labels']), Counter(train_biasbios['protected_attribute']))'''

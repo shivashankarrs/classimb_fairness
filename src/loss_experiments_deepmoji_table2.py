@@ -20,9 +20,10 @@ import random
 import pandas as pd
 import pdb
 import sys
+import torch.nn as nn
 sys.path.append('../')
 
-from data.process_data import load_data_deepmoji, upsample, load_data_biasbios, load_data_biasbios_subset
+from data.process_data import load_data_deepmoji, upsample, load_data_biasbios
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -111,7 +112,7 @@ def get_TPR(y_main, y_hat_main, y_protected):
 def rms(arr):
     return np.sqrt(np.mean(np.square(arr)))
 
-def run_all_losses_biasbios(option='original', class_balance=0.5):
+def run_all_losses(option='original', class_balance=0.5):
     results = defaultdict(dict)
     dev_results = defaultdict(dict)
 
@@ -119,12 +120,14 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
     SAVE_CROSSENTROPY_300D = True
     
     logging.info('loading train dev test sets...')
-    train_data = load_data_biasbios_subset("/lt/work/shiva/class_imbalance/datasets/biography/train.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/train_cls.npy")
-    dev_data = load_data_biasbios_subset("/lt/work/shiva/class_imbalance/datasets/biography/dev.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/dev_cls.npy")
-    test_data = load_data_biasbios_subset("/lt/work/shiva/class_imbalance/datasets/biography/test.pickle", "../resources/professions.txt", "/lt/work/shiva/class_imbalance/datasets/biography/bert_encode_biasbios/test_cls.npy")
+    train_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train', option=option, class_balance=class_balance)
+    dev_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/dev', option=option, class_balance=class_balance)
+    test_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/test', option=option, class_balance=class_balance)
+
     x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
     x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
     x_test, y_p_test, y_m_test = test_data['feature'], test_data['protected_attribute'], test_data['labels']
+
     logging.info(f'train/dev/test data loaded. X_train: {x_train.shape} X_dev: {x_dev.shape} X_test: {x_test.shape}')
 
     if DO_RANDOM:
@@ -135,7 +138,9 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
         _, biased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
         results[option]['rand'] = {"tpr": rms(list(biased_diffs.values()))}
         results[option]['rand'].update({"f1": f1})
-     
+        group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+        results[option]['rand'].update(group_results)
+
     unique, counts = np.unique(y_m_train, return_counts=True)
     cls_num_list = counts.tolist()
     beta = 0.9999
@@ -194,8 +199,6 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
     rho_range = [0.0001, 0.01, 0.1, 0.3, 0.5, 0.7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 95, 100]
     lambda_range = [0.0001, 0.01, 0.1, 0.3, 0.5, 0.7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 95, 100]
 
-    #for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
-    """
     for _s in srange:
         ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
         ldamcwcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=per_cls_weights, s=_s) #ldam cw
@@ -208,13 +211,12 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
         criterions['criteria_ldam_cw_{}'.format(_s)] = ldamcwcriterion
         criterions['criteria_ldam_ldamiw_{}'.format(_s)] = ldamiw
         
-        #for _rho in [0.01, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50, 70, 90, 100]:
         for _rho in rho_range:
             ldamreg = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
                     mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=_s, ldamc=1, 
                     ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=_rho)
             
-            criterions['criteria_ldam_ldamreg_{}_{}'.format(_s, _rho)] = ldamreg"""
+            criterions['criteria_ldam_ldamreg_{}_{}'.format(_s, _rho)] = ldamreg
         
     for c_name, criterion in criterions.items():
         set_seed(SEED)
@@ -234,14 +236,14 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
             train_data['hidden'] = x_train_repr
             dev_data['hidden'] = x_dev_repr
             test_data['hidden'] = x_test_repr
-     
-            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/bios_train_with_hidden_tc.pickle', 'wb') as handle:
+         
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/bios_dev_with_hidden_tc.pickle', 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/dev_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(dev_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/bios_test_with_hidden_tc.pickle', 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/test_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(test_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         f1 = model.score(x_test, y_m_test)
@@ -249,24 +251,24 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
         _, debiased_diffs = get_TPR(y_m_test, y_test_pred, y_p_test)
         results[option][c_name].update({"f1": f1})
         results[option][c_name].update({"tpr": rms(list(debiased_diffs.values()))})
-     
+        group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+        results[option][c_name].update(group_results)
+
         dev_f1 = model.score(x_dev, y_m_dev)
         y_dev_pred = model.predict(x_dev)
         _, dev_debiased_diffs = get_TPR(y_m_dev, y_dev_pred, y_p_dev)
         dev_results[option][c_name].update({"f1": dev_f1})
         dev_results[option][c_name].update({"tpr": rms(list(dev_debiased_diffs.values()))})
-     
+        dev_group_results = group_evaluation(y_dev_pred, y_m_dev, y_p_dev)
+        dev_results[option][c_name].update(dev_group_results)
 
-    #for _s in [0.5, 1, 3, 5, 10, 15, 20, 25, 30]:
-        #for adv_val in [0.01, 0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50, 70, 90, 100]:
-    """
+
     for _s in srange:
         for adv_val in lambda_range:
             logging.info(f"adv: {_s}_{adv_val}")
             normed_linear = True
             set_seed(SEED)
             adv_ldamcriterion = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=_s) #ldam
-            #advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val)
             advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=adv_ldamcriterion, criterion2=F.cross_entropy, alpha=adv_val, rev_tech=1)
             advmodel.to(device)
             optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
@@ -279,7 +281,9 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
             results[option]["adv_{}_{}".format(_s, adv_val)] = {}
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"f1": f1})
             results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": _tpr_val})
-          
+            group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
+            results[option]["adv_{}_{}".format(_s, adv_val)].update(group_results)
+
             logging.info(f"f1: {f1}")
             logging.info(f"tpr: {_tpr_val}")
 
@@ -288,47 +292,46 @@ def run_all_losses_biasbios(option='original', class_balance=0.5):
             _, dev_debiased_diffs = get_TPR(y_m_dev, y_dev_pred, y_p_dev)
             dev_results[option]["adv_{}_{}".format(_s, adv_val)] = {}
             dev_results[option]["adv_{}_{}".format(_s, adv_val)].update({"f1": dev_f1})
-            dev_results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": rms(list(dev_debiased_diffs.values()))})"""
+            dev_results[option]["adv_{}_{}".format(_s, adv_val)].update({"tpr": rms(list(dev_debiased_diffs.values()))})
+            dev_group_results = group_evaluation(y_dev_pred, y_m_dev, y_p_dev)
+            dev_results[option]["adv_{}_{}".format(_s, adv_val)].update(dev_group_results)
             
     return results, dev_results
 
+def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5, split = "test"):
 
-def pretty_print_biography(results, option='original', output_csv_dir='./', split = "test"):
-
-    with open(f"{option}_bios_twoclass_results_april19_large_{split}_seed_{SEED}.pkl", "wb") as f:
+    with open(f"{option}_{class_balance}_results_table2_large_{split}_seed_{SEED}.pkl", "wb") as f:
         pickle.dump(results, f)
 
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_bios_twoclass_results_april19_large_{split}_seed_{SEED}.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_table2_large_{split}_seed_{SEED}.csv"))
 
 if __name__ == "__main__":
 
     #datasets_to_run = ['deepmoji', 'biography']
-    datasets_to_run = ['biography']
+    datasets_to_run = ['deepmoji']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"using device {device}")
 
     for ds in datasets_to_run:
         if ds == 'deepmoji':
-            all_results = defaultdict(dict)
-            all_results.update(run_all_losses(option='original'))
-            pretty_print(all_results)
-            cb = [0.9, 0.95]
-            option = ['inlp0.9', 'inlp0.95']
+            #cb = [0.95, 0.9, 0.8, 0.7, 0.6] #run 1
+            #cb = [0.8] #run 2
+            cb = [0.7, 0.6] #run 3
+            optionc = 'inlp0.8'
             for _i in range(len(cb)):
-                all_results = defaultdict(dict)
-                all_results.update(run_all_losses(option=option[_i], class_balance=cb[_i]))
-                pretty_print(all_results, class_balance=cb[_i])
+                test_results = defaultdict(dict)
+                dev_results = defaultdict(dict)
+                test_run, dev_run = run_all_losses(option=optionc, class_balance=cb[_i])
+                test_results.update(test_run)
+                dev_results.update(dev_run)
+                pretty_print(test_results, option=optionc, class_balance=cb[_i])
+                pretty_print(dev_results, option=optionc, class_balance=cb[_i], split = "dev")
         elif ds == "biography":
-            test_results = defaultdict(dict)
-            dev_results = defaultdict(dict)
-            test_run, dev_run = run_all_losses_biasbios(option='original')
-            test_results.update(test_run)
-            dev_results.update(dev_run)
-            #pretty_print_biography(test_results)
-            #pretty_print_biography(dev_results, split = "dev")
-           
+            all_results = defaultdict(dict)
+            all_results.update(run_all_losses_biasbios())
+            pretty_print_biography(all_results)
   
             
             
