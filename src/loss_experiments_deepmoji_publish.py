@@ -317,15 +317,17 @@ if __name__ == "__main__":
 
     for ds in datasets_to_run:
         if ds == 'deepmoji':
-            test_results = defaultdict(dict)
+            '''test_results = defaultdict(dict)
             dev_results = defaultdict(dict)
             test_run, dev_run = run_all_losses(option='original')
             test_results.update(test_run)
             dev_results.update(dev_run)
             pretty_print(test_results)
             pretty_print(dev_results, split = "dev")
-            cb = [0.9, 0.95]
-            option = ['inlp0.9', 'inlp0.95']
+            #cb = [0.9, 0.95, 0.99]'''
+            cb = [0.99]
+            #option = ['inlp0.9', 'inlp0.95', 'inlp0.99']
+            option = ['inlp0.99']
             for _i in range(len(cb)):
                 test_results = defaultdict(dict)
                 dev_results = defaultdict(dict)

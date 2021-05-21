@@ -33,7 +33,7 @@ from sklearn.metrics import average_precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import confusion_matrix
 
-
+SEED = 0
 
 def set_seed(seed=0):
     np.random.seed(seed)
@@ -229,17 +229,17 @@ def run_all_losses_biasbios():
     ldamg=0, ldamcg=0, use_instance=True, ldam_mul_c_g=False) #ldamiw
 
     criterion11 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams1, ldamc=1, 
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=1, ldamc=1, 
     ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
     criterion12 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams30, ldamc=1, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=1, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=2) #ldamreg
     criterion13 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams1, ldamc=0.5, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=1, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=3) #ldamreg
     criterion14 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=ldams30, ldamc=0.5, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=1, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=4) #ldamreg
 
     criterion111 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
     mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=5, ldamc=1, 
@@ -248,60 +248,60 @@ def run_all_losses_biasbios():
     mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=10, ldamc=1, 
     ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
     criterion131 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=5, ldamc=0.5, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=5, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=2) #ldamreg
     criterion141 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=10, ldamc=0.5, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=10, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=2) #ldamreg
 
     criterion112 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=15, ldamc=1, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=5, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=3) #ldamreg
     criterion122 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=20, ldamc=1, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=5, ldamc=1, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=4) #ldamreg
     criterion132 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=15, ldamc=0.5, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=10, ldamc=0.5, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=3) #ldamreg
     criterion142 = GeneralLDAMLoss(cls_num_list=cls_num_list, clsp_num_list=clsp_num_list, 
-    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=20, ldamc=0.5, 
-    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
+    mp_num_list=pm_counts, max_m=0.5, class_weight=None, ldams=10, ldamc=0.5, 
+    ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=4) #ldamreg
 
     criterions = {
-        'focal':criterion1, 
-        'adjdice':criterion2, 
-        'CE': criterion3,
-        'iw':criterion4, 
+        #'focal':criterion1, 
+        #'adjdice':criterion2, 
+        #'CE': criterion3,
+        #'iw':criterion4, 
         'ldam':criterion5, 
-        'ldamcw':criterion6, 
-        'ldamiw-c=1,ldams=1':criterion7,
-        'ldamiw-c=0.5,ldams=1':criterion8,
-        'ldamiw-c=1,ldams=30':criterion9,
-        'ldamiw-c=0.5,ldams=30':criterion10,
-        'ldamiw-c=1,ldams=5':criterion71,
-        'ldamiw-c=0.5,ldams=5':criterion81,
-        'ldamiw-c=1,ldams=10':criterion91,
-        'ldamiw-c=0.5,ldams=10':criterion101,
-        'ldamiw-c=1,ldams=15':criterion72,
-        'ldamiw-c=0.5,ldams=15':criterion82,
-        'ldamiw-c=1,ldams=20':criterion92,
-        'ldamiw-c=0.5,ldams=20':criterion102,
-        'ldamreg-c=1,ldams=1':criterion11,
-        'ldamreg-c=1,ldams=30':criterion12,
-        'ldamreg-c=0.5,ldams=1':criterion13,
-        'ldamreg-c=0.5,ldams=30':criterion14,
-        'ldamreg-c=1,ldams=5':criterion111,
-        'ldamreg-c=1,ldams=10':criterion121,
-        'ldamreg-c=0.5,ldams=5':criterion131,
-        'ldamreg-c=0.5,ldams=10':criterion141,
-        'ldamreg-c=1,ldams=15':criterion112,
-        'ldamreg-c=1,ldams=20':criterion122,
-        'ldamreg-c=0.5,ldams=15':criterion132,
-        'ldamreg-c=0.5,ldams=20':criterion142
+        #'ldamcw':criterion6, 
+        #'ldamiw-c=1,ldams=1':criterion7,
+        #'ldamiw-c=0.5,ldams=1':criterion8,
+        #'ldamiw-c=1,ldams=30':criterion9,
+        #'ldamiw-c=0.5,ldams=30':criterion10,
+        #'ldamiw-c=1,ldams=5':criterion71,
+        #'ldamiw-c=0.5,ldams=5':criterion81,
+        #'ldamiw-c=1,ldams=10':criterion91,
+        #'ldamiw-c=0.5,ldams=10':criterion101,
+        #'ldamiw-c=1,ldams=15':criterion72,
+        #'ldamiw-c=0.5,ldams=15':criterion82,
+        #'ldamiw-c=1,ldams=20':criterion92,
+        #'ldamiw-c=0.5,ldams=20':criterion102,
+        #'ldamreg-c=1,ldams=1, r=1':criterion11,
+        #'ldamreg-c=1,ldams=1, r=2':criterion12,
+        #'ldamreg-c=1,ldams=1, r=3':criterion13,
+        #'ldamreg-c=1,ldams=1, r=4':criterion14,
+        #'ldamreg-c=1,ldams=5, r=1':criterion111,
+        #'ldamreg-c=1,ldams=10, r=1':criterion121,
+        #'ldamreg-c=1,ldams=5, r=2':criterion131,
+        #'ldamreg-c=1,ldams=10, r=2':criterion141,
+        #'ldamreg-c=1,ldams=5, r=3':criterion112,
+        #'ldamreg-c=1,ldams=5, r=4':criterion122,
+        #'ldamreg-c=1,ldams=10, r=3':criterion132,
+        #'ldamreg-c=1,ldams=10, r=4':criterion142
         }
 
     for c_name, criterion in criterions.items():
-        set_seed(0)
+        set_seed(SEED)
         logging.info(f"loss: {c_name}")
         results['bios'][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
@@ -321,13 +321,13 @@ def run_all_losses_biasbios():
             test_data['hidden'] = x_test_repr
      
             import pickle
-            with open('../datasets/bios_train_with_hidden.pickle', 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/bios_train_with_hidden.pickle', 'wb') as handle:
                 pickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('../datasets/bios_dev_with_hidden.pickle', 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/bios_dev_with_hidden.pickle', 'wb') as handle:
                 pickle.dump(dev_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('../datasets/bios_test_with_hidden.pickle', 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/bios_test_with_hidden.pickle', 'wb') as handle:
                 pickle.dump(test_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         f1 = model.score(x_test, y_m_test)
@@ -338,8 +338,9 @@ def run_all_losses_biasbios():
         #group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
         #results[c_name].update(group_results)
 
-    for adv_val in [1, 3, 5]:
-        set_seed(0)
+    advldam = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=0.5)
+    for adv_val in [1]:
+        set_seed(SEED)
         advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=criterion5, criterion2=F.cross_entropy, lambda_adv=adv_val)
         advmodel.to(device)
         optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
@@ -364,9 +365,9 @@ def run_all_losses(option='original', class_balance=0.5):
     DO_CLUSTERING = False
     
     logging.info('loading train dev test sets...')
-    train_data = load_data_deepmoji('../datasets/deepmoji/train', option=option, class_balance=class_balance)
-    dev_data = load_data_deepmoji('../datasets/deepmoji/dev', option=option, class_balance=class_balance)
-    test_data = load_data_deepmoji('../datasets/deepmoji/test', option=option, class_balance=class_balance)
+    train_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train', option=option, class_balance=class_balance)
+    dev_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/dev', option=option, class_balance=class_balance)
+    test_data = load_data_deepmoji('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/test', option=option, class_balance=class_balance)
 
     x_train, y_p_train, y_m_train = train_data['feature'], train_data['protected_attribute'], train_data['labels']
     x_dev, y_p_dev, y_m_dev = dev_data['feature'], dev_data['protected_attribute'], dev_data['labels']
@@ -535,40 +536,40 @@ def run_all_losses(option='original', class_balance=0.5):
     ldamg=0, ldamcg=0, use_instance=False, ldam_mul_c_g=False, rho=1) #ldamreg
 
     criterions = {
-        'focal':criterion1, 
-        'adjdice':criterion2, 
+        #'focal':criterion1, 
+        #'adjdice':criterion2, 
         'CE': criterion3,
-        'iw':criterion4, 
-        'ldam':criterion5, 
-        'ldamcw':criterion6, 
-        'ldamiw-c=1,ldams=1':criterion7,
-        'ldamiw-c=0.5,ldams=1':criterion8,
-        'ldamiw-c=1,ldams=30':criterion9,
-        'ldamiw-c=0.5,ldams=30':criterion10,
-        'ldamiw-c=1,ldams=5':criterion71,
-        'ldamiw-c=0.5,ldams=5':criterion81,
-        'ldamiw-c=1,ldams=10':criterion91,
-        'ldamiw-c=0.5,ldams=10':criterion101,
-        'ldamiw-c=1,ldams=15':criterion72,
-        'ldamiw-c=0.5,ldams=15':criterion82,
-        'ldamiw-c=1,ldams=20':criterion92,
-        'ldamiw-c=0.5,ldams=20':criterion102,
-        'ldamreg-c=1,ldams=1':criterion11,
-        'ldamreg-c=1,ldams=30':criterion12,
-        'ldamreg-c=0.5,ldams=1':criterion13,
-        'ldamreg-c=0.5,ldams=30':criterion14,
-        'ldamreg-c=1,ldams=5':criterion111,
-        'ldamreg-c=1,ldams=10':criterion121,
-        'ldamreg-c=0.5,ldams=5':criterion131,
-        'ldamreg-c=0.5,ldams=10':criterion141,
-        'ldamreg-c=1,ldams=15':criterion112,
-        'ldamreg-c=1,ldams=20':criterion122,
-        'ldamreg-c=0.5,ldams=15':criterion132,
-        'ldamreg-c=0.5,ldams=20':criterion142
+        #'iw':criterion4, 
+        #'ldam':criterion5, 
+        #'ldamcw':criterion6, 
+        #'ldamiw-c=1,ldams=1':criterion7,
+        #'ldamiw-c=0.5,ldams=1':criterion8,
+        #'ldamiw-c=1,ldams=30':criterion9,
+        #'ldamiw-c=0.5,ldams=30':criterion10,
+        #'ldamiw-c=1,ldams=5':criterion71,
+        #'ldamiw-c=0.5,ldams=5':criterion81,
+        #'ldamiw-c=1,ldams=10':criterion91,
+        #'ldamiw-c=0.5,ldams=10':criterion101,
+        #'ldamiw-c=1,ldams=15':criterion72,
+        #'ldamiw-c=0.5,ldams=15':criterion82,
+        #'ldamiw-c=1,ldams=20':criterion92,
+        #'ldamiw-c=0.5,ldams=20':criterion102,
+        #'ldamreg-c=1,ldams=1':criterion11,
+        #'ldamreg-c=1,ldams=30':criterion12,
+        #'ldamreg-c=0.5,ldams=1':criterion13,
+        #'ldamreg-c=0.5,ldams=30':criterion14,
+        #'ldamreg-c=1,ldams=5':criterion111,
+        #'ldamreg-c=1,ldams=10':criterion121,
+        #'ldamreg-c=0.5,ldams=5':criterion131,
+        #'ldamreg-c=0.5,ldams=10':criterion141,
+        #'ldamreg-c=1,ldams=15':criterion112,
+        #'ldamreg-c=1,ldams=20':criterion122,
+        #'ldamreg-c=0.5,ldams=15':criterion132,
+        #'ldamreg-c=0.5,ldams=20':criterion142
         }
 
     for c_name, criterion in criterions.items():
-        set_seed(0)
+        set_seed(SEED)
         logging.info(f"loss: {c_name}")
         results[option][c_name] = {}
         #only for ldam the last layer weights should be normalised so we'll have a normed_linear layer
@@ -589,13 +590,13 @@ def run_all_losses(option='original', class_balance=0.5):
             test_data['hidden'] = x_test_repr
          
             import pickle
-            with open('../datasets/deepmoji/train_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/train_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('../datasets/deepmoji/dev_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/dev_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(dev_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
-            with open('../datasets/deepmoji/test_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
+            with open('/home/sssub/classimb_fairness-hiddenreps/datasets/deepmoji/test_{}_{}_with_hidden.pickle'.format(option, class_balance), 'wb') as handle:
                 pickle.dump(test_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
             
         f1 = model.score(x_test, y_m_test)
@@ -606,9 +607,10 @@ def run_all_losses(option='original', class_balance=0.5):
         group_results = group_evaluation(y_test_pred, y_m_test, y_p_test)
         results[option][c_name].update(group_results)
 
-    for adv_val in [1, 3, 5]:
-        set_seed(0)
-        advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=criterion5, criterion2=F.cross_entropy, lambda_adv=adv_val)
+    advldam = LDAMLoss(cls_num_list=cls_num_list, max_m=0.5, weight=None, s=0.5)
+    for adv_val in [1]:
+        set_seed(SEED)
+        advmodel = MLP_adv(input_size=x_train.shape[1], hidden_size=300, output_size=np.max(y_m_train) + 1, domain_output_size = np.max(y_p_train) + 1, normed_linear=normed_linear, criterion1=advldam, criterion2=F.cross_entropy, lambda_adv=adv_val)
         advmodel.to(device)
         optimizer = torch.optim.Adam(params=advmodel.parameters(), lr=1e-3)
         advmodel.fit(x_train, y_m_train, y_p_train, y_mp_train, x_dev, y_m_dev, optimizer, instance_weights=instance_weights, n_iter=200, batch_size=1000, max_patience=10)
@@ -626,16 +628,17 @@ def run_all_losses(option='original', class_balance=0.5):
 def pretty_print(results, option='original', output_csv_dir='./', class_balance=0.5):
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"{option}_{class_balance}_results_apr10_adv_seed{SEED}.csv"))
 
 def pretty_print_biography(results, output_csv_dir='./'):
     for option, res in results.items():
         df = pd.DataFrame(res)
-        df.to_csv(os.path.join(output_csv_dir, "biography_results.csv"))
+        df.to_csv(os.path.join(output_csv_dir, f"biography_results_apr10_adv_s=0.5_seed{SEED}.csv"))
 
 if __name__ == "__main__":
 
-    datasets_to_run = ['deepmoji', 'biography']
+    #datasets_to_run = ['deepmoji', 'biography']
+    datasets_to_run = ['biography']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"using device {device}")
 
@@ -646,6 +649,8 @@ if __name__ == "__main__":
             pretty_print(all_results)
             cb = [0.9, 0.95]
             option = ['inlp0.9', 'inlp0.95']
+            #cb = [0.95]
+            #option = ['inlp0.95']
             for _i in range(len(cb)):
                 all_results = defaultdict(dict)
                 all_results.update(run_all_losses(option=option[_i], class_balance=cb[_i]))

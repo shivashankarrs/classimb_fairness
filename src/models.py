@@ -206,6 +206,7 @@ def train_epoch(model: nn.Module, optimizer: torch.optim, data_loader: torch.uti
 def train_epoch_adv(model: nn.Module, optimizer: torch.optim, data_loader: torch.utils.data.DataLoader, criterion1=F.cross_entropy, criterion2=F.cross_entropy, lambda_adv=1):
     model.train()
     epoch_loss = 0
+     
     for input, target, group, targetgroup, instance_weights in data_loader:
         input, target, group, targetgroup = variable(input), variable(target), variable(group), variable(targetgroup)
         optimizer.zero_grad()
@@ -219,10 +220,13 @@ def train_epoch_adv(model: nn.Module, optimizer: torch.optim, data_loader: torch
             loss = criterion1(output, target)
 
         loss2 = criterion2(groupout, group)
+
         epoch_loss += loss.data
         epoch_loss += lambda_adv * loss2.data
-        loss.backward()
+        epoch_loss1 = loss + lambda_adv * loss2
+        epoch_loss1.backward()
         optimizer.step()
+        #pdb.set_trace()
     return epoch_loss / len(data_loader)
 
 def variable(t: torch.Tensor, use_cuda=True, **kwargs):
