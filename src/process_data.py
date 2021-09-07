@@ -3,7 +3,7 @@ import numpy as np
 import os, math
 from sklearn.utils import resample
 
-DATA_PATH = "/home/sssub/classimb_fairness-hiddenreps/datasets/"
+
 
 def get_sizes(base_size):
     black = 0.18 #8780

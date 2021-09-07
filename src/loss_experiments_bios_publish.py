@@ -22,7 +22,7 @@ import pdb
 import sys
 sys.path.append('../')
 
-from data.process_data import load_data_deepmoji, upsample, load_data_biasbios, load_data_biasbios_subset
+from process_data import load_data_deepmoji, upsample, load_data_biasbios, load_data_biasbios_subset
 
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
